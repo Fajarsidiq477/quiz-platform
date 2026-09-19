@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-The Next.js app, the full database layer (Drizzle schema, migrations, tests) and authentication exist. The only pages are `/login` and placeholder `/admin` and `/student` home pages. There is no quiz UI and no BullMQ worker yet.
+The Next.js app, the full database layer (Drizzle schema, migrations, tests) and authentication exist. Pages: `/login`, an admin dashboard shell (`/admin` plus placeholder Classes, Students, Question bank and Quizzes pages), and a placeholder `/student` home. There is no quiz functionality and no BullMQ worker yet.
 
 ## Commands
 
@@ -100,6 +100,16 @@ Auth.js v5 (`next-auth@beta`) with the Credentials provider: email and password 
 - Type augmentation for the session, user and JWT is in `src/auth/next-auth.d.ts`; the JWT interface must be augmented via `@auth/core/jwt`, not `next-auth/jwt` (which only re-exports it).
 - Scripts in `scripts/` run through `tsx` as CommonJS, so no top-level `await`; wrap the body in an async `main()`.
 - Password hashing makes the auth tests slow (about 25s for the whole suite).
+
+## Admin area
+
+`src/app/admin/layout.tsx` is the dashboard shell (header, sidebar, main). Components live in `src/components/admin/`, and the sidebar entries in `nav-items.ts`.
+
+- **Access is checked in every page, not the layout.** A layout does not re-run on client-side navigation and cannot stop child routes from rendering, so the layout is display-only. Every `page.tsx` / `route.ts` under `src/app/admin` must call `await requireUser("admin")` itself, and server actions and data functions should re-check too. `tests/admin/pages-are-protected.test.ts` fails if a page forgets.
+- **Adding a section:** create `src/app/admin/<name>/page.tsx` (copy an existing placeholder, keep the `requireUser` call), then add it to `ADMIN_NAV`. A test fails if a nav link has no page.
+- The layout's title template does not apply to `/admin/page.tsx` (same segment), so that page sets an `absolute` title.
+- The shell is a CSS grid. On phones it stacks three areas, so the mobile media query must set three `grid-template-rows` (`auto auto 1fr`); inheriting the desktop `auto 1fr` stretches the nav strip and leaves a blank gap under the header (`tests/admin/mobile-layout.test.ts`).
+- The user menu in the header is a Suspense-wrapped server component so the shell streams without waiting on the user lookup.
 
 ## Conventions
 
