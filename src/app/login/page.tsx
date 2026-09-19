@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
@@ -32,14 +33,20 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const user = await getCurrentUser();
   if (user) redirect(homeFor(user.role));
 
-  const { error } = await searchParams;
+  const { error, notice } = await searchParams;
   const code = Array.isArray(error) ? error[0] : error;
+  const justRegistered = (Array.isArray(notice) ? notice[0] : notice) === "registered";
 
   return (
     <main className="shell">
       <form className="card" action={signInAction}>
         <h1>Quiz Platform</h1>
         <p className="muted">Sign in with your school email and password.</p>
+        {justRegistered ? (
+          <p className="info" role="status">
+            Your account is ready. Please sign in.
+          </p>
+        ) : null}
         {code ? (
           <p className="notice" role="alert">
             {MESSAGES[code] ?? MESSAGES.invalid_credentials}
@@ -62,6 +69,9 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         <button type="submit" className="button">
           Sign in
         </button>
+        <p className="muted">
+          New student? <Link href="/register">Create an account</Link> with your class code.
+        </p>
       </form>
     </main>
   );

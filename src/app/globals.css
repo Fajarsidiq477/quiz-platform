@@ -106,3 +106,25 @@ a {
   color: inherit;
   font: inherit;
 }
+
+.field-error {
+  color: #c0392b;
+  font-size: 0.85rem;
+}
+
+.hint {
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
+
+.info {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #1e8e3e;
+  color: #1e8e3e;
+}
+
+.card a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
