@@ -1,4 +1,5 @@
-import { foreignKey, index, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { check, foreignKey, index, integer, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
 import { citext, createdAt, pk, schoolId, tstz } from "./_columns";
 import { enrollmentStatus, userRole, userStatus } from "./enums";
 
@@ -11,13 +12,18 @@ export const users = pgTable(
     email: citext("email").notNull(),
     name: text("name").notNull(),
     role: userRole("role").notNull(),
+    /** `scrypt$N$r$p$salt$hash` (see src/auth/password.ts). Null = cannot sign in yet. */
     passwordHash: text("password_hash"),
+    // Brute-force lockout, maintained by src/auth/sign-in-policy.ts.
+    failedLoginAttempts: integer("failed_login_attempts").notNull().default(0),
+    lockedUntil: tstz("locked_until"),
     status: userStatus("status").notNull().default("active"),
     archivedAt: tstz("archived_at"),
     createdAt: createdAt(),
   },
   (t) => [
     unique("users_email_uq").on(t.email),
+    check("users_failed_login_attempts_ck", sql`${t.failedLoginAttempts} >= 0`),
     unique("users_id_school_uq").on(t.id, t.schoolId),
     index("users_school_role_idx").on(t.schoolId, t.role),
   ],
