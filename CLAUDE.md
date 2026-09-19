@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-The Next.js app, the full database layer (Drizzle schema, migrations, tests), authentication, and admin management of **Classes** and **Quizzes** (with their questions) exist. Students can register themselves at `/register` with a class join code. Still placeholders: the admin Students and Question bank pages, and the `/student` home. Not built yet: student quiz-taking (attempts, timer, submit), grading, and the BullMQ worker.
+The Next.js app, the full database layer (Drizzle schema, migrations, tests), authentication, admin management of **Classes** and **Quizzes** (with their questions), student self-registration, and the **student area** (see your quizzes, take them with a server-side countdown and autosave, automatic grading, results) exist. Still placeholders: the admin Students and Question bank pages. Not built yet: manual grading, teacher-side results and analytics, and the BullMQ worker.
 
 ## Commands
 
@@ -110,6 +110,20 @@ Auth.js v5 (`next-auth@beta`) with the Credentials provider: email and password 
 - The layout's title template does not apply to `/admin/page.tsx` (same segment), so that page sets an `absolute` title.
 - The shell is a CSS grid. On phones it stacks three areas, so the mobile media query must set three `grid-template-rows` (`auto auto 1fr`); inheriting the desktop `auto 1fr` stretches the nav strip and leaves a blank gap under the header (`tests/admin/mobile-layout.test.ts`).
 - The user menu in the header is a Suspense-wrapped server component so the shell streams without waiting on the user lookup.
+
+## Student area
+
+Pages: `/student` (quizzes by phase), `/student/quizzes/[id]` (rules, start, past attempts) and `/student/attempts/[id]`, which is the quiz itself while the attempt is open and the result once it is not. Logic is in `src/features/student/` (`service.ts`, pure `grading.ts`, `answers.ts`, `actions.ts`); the browser side is in `src/components/student/`.
+
+- **The server owns time.** The deadline is set by a database trigger when the attempt starts. The page gets `remainingMs` computed by the database clock; the browser counts down from that with `performance.now()` (never `Date`, never the device clock), re-syncs on every save, and submits automatically at zero. All of that is cosmetic: the database refuses answer writes and submits after the deadline plus a 5 second grace (`GRACE_MS`). Do not add client-supplied times anywhere.
+- **Idempotent by construction.** `startAttempt` returns the open attempt instead of creating a second (partial unique index); `saveAnswer` upserts on `(attempt_id, quiz_question_id)`; `submitAttempt` is a guarded `UPDATE ... WHERE status = 'in_progress'` that also grades, in the same transaction, so a replay or a timer/button race does nothing the second time. Saves and submits lock the attempt row (`FOR UPDATE`).
+- **The answer key never reaches the browser while a quiz is open.** `TakingItem` has no `isCorrect`, accepted answers or explanation; `tests/student/service.test.ts` asserts this, and it was also checked against the rendered page's data. Correctness only appears in `ReviewItem`, after the attempt ends and only if the quiz's results setting allows (`canSeeResults`: `after_submit`, `after_close`, `never`). Hidden results must not leak scores or answers in any field.
+- **Grading is automatic and all-or-nothing** (`grading.ts`): multiple choice needs exactly the correct set, short answers match any accepted answer ignoring case, spacing and full-width characters, unanswered is 0, no negative marking.
+- **No background worker yet.** An attempt whose time ran out is ended lazily by `finishOverdueAttempts` whenever that student loads a student page or starts a quiz (it waits out the grace period first). Until the BullMQ worker exists, an abandoned attempt stays `in_progress` until then, so any teacher-side view of attempts must not assume it has been closed.
+- **Autosave** is `SaveQueue` (`save-queue.ts`, plain TypeScript, unit-tested): text is debounced, choices save at once, one request per question at a time, failures retry and keep the answer, a refusal from the server is shown and not retried. `AttemptRunner` sends the full set of answers with the final submit, so a lost autosave cannot lose an answer.
+- The shuffle option orders questions per attempt with a seed from the attempt id (`seededShuffle`), so a refresh does not reorder them.
+- **Component tests** run in jsdom: start the file with `// @vitest-environment jsdom` and name it `*.test.tsx`. Use fake timers including `performance`, and make a fake server report a *shrinking* remaining time, because every save re-syncs the countdown.
+- **In service tests never nest `asAppRole` callbacks** (do not call a helper that uses it from inside another `as(() => ...)`): the inner call's `reset role` ends the restricted role for the outer one and RLS silently stops applying. Compute inputs first.
 
 ## Student self-registration
 
