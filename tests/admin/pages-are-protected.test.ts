@@ -54,3 +54,17 @@ describe("admin navigation", () => {
     expect(isActive(classes, "/admin/students")).toBe(false);
   });
 });
+
+describe("student area access control", () => {
+  // Same rule as the admin area: a layout cannot enforce access, so every page does it itself.
+  const studentDir = path.join(appDir, "student");
+  const guarded = walk(studentDir).filter((f) => /(^|\/)(page|route)\.[jt]sx?$/.test(rel(f)));
+
+  it("finds the student pages", () => {
+    expect(guarded.length).toBeGreaterThanOrEqual(3); // home, quiz, attempt
+  });
+
+  it.each(guarded.map((f) => [rel(f), f]))("%s calls requireUser(\"student\")", (_name, file) => {
+    expect(readFileSync(file, "utf8")).toMatch(/await\s+requireUser\(\s*["']student["']\s*\)/);
+  });
+});

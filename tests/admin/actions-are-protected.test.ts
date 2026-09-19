@@ -20,6 +20,9 @@ const PUBLIC_ACTION_FILES = ["register/actions.ts"];
 
 const actionFiles = allActionFiles.filter((f) => !PUBLIC_ACTION_FILES.includes(rel(f)));
 
+// The role an action file must require: student actions need a student, everything else an admin.
+const roleFor = (file: string) => (rel(file).startsWith("student/") ? "student" : "admin");
+
 // Server actions are public HTTP endpoints: anyone can POST to one without ever opening the page
 // that uses it. So every exported action must check the session itself, as its first step.
 describe("server actions", () => {
@@ -46,7 +49,7 @@ describe("server actions", () => {
   });
 
   it.each(actionFiles.map((f) => [rel(f), f]))(
-    "%s is a server-actions file where every action starts with requireUser(\"admin\")",
+    "%s is a server-actions file where every action starts with requireUser for its role",
     (_name, file) => {
       const source = readFileSync(file, "utf8");
       expect(source.trimStart().startsWith('"use server"')).toBe(true);
@@ -58,8 +61,9 @@ describe("server actions", () => {
         const name = chunk.slice(0, chunk.indexOf("("));
         const body = chunk.slice(chunk.indexOf("{") + 1);
         const firstStatement = body.trimStart().split("\n")[0];
-        expect(firstStatement, `${name} must call requireUser("admin") first`).toMatch(
-          /await requireUser\("admin"\)/,
+        const role = roleFor(file);
+        expect(firstStatement, `${name} must call requireUser("${role}") first`).toContain(
+          `await requireUser("${role}")`,
         );
       }
     },
