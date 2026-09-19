@@ -40,6 +40,26 @@ export async function expectDbError(promise: PromiseLike<unknown>, pattern: RegE
   expect(errorText(caught)).toMatch(pattern);
 }
 
+/**
+ * Creates the limited role the real app should connect as. Superusers bypass RLS, so anything
+ * that needs to prove RLS behaviour must run under this role (see `asAppRole`).
+ */
+export async function createAppRole(db: TestDb) {
+  await db.execute(sql`create role app_user`);
+  await db.execute(sql`grant usage on schema public to app_user`);
+  await db.execute(sql`grant all on all tables in schema public to app_user`);
+}
+
+/** Runs `fn` as the limited app role, then switches back to the superuser. */
+export async function asAppRole<T>(db: TestDb, fn: () => Promise<T>): Promise<T> {
+  await db.execute(sql`set role app_user`);
+  try {
+    return await fn();
+  } finally {
+    await db.execute(sql`reset role`);
+  }
+}
+
 /** Runs `fn` with triggers disabled (superuser only), e.g. to backdate timing in tests. */
 export async function withoutTriggers<T>(db: TestDb, fn: () => Promise<T>): Promise<T> {
   await db.execute(sql`set session_replication_role = replica`);

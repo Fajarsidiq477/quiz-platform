@@ -2,15 +2,13 @@ import { eq, sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import * as schema from "@/db/schema";
 import { withSchool } from "@/db/tenant";
-import { createTestDb, expectDbError, seedSchool, type TestDb } from "./helpers";
+import { createAppRole, createTestDb, expectDbError, seedSchool, type TestDb } from "./helpers";
 
 describe("tenant isolation (rule 4)", () => {
   let db: TestDb;
   beforeAll(async () => {
     db = await createTestDb();
-    await db.execute(sql`create role app_user`);
-    await db.execute(sql`grant usage on schema public to app_user`);
-    await db.execute(sql`grant all on all tables in schema public to app_user`);
+    await createAppRole(db);
   });
 
   it("rejects a child row that points at a parent in another school", async () => {
