@@ -88,6 +88,11 @@ export async function listQuizzes(db: AnyPgDb, schoolId: string): Promise<QuizSu
   );
 }
 
+/** The quiz's questions in order, with their options (including which are correct). */
+export async function loadQuizItems(tx: Tx, schoolId: string, quizId: string): Promise<QuizItem[]> {
+  return loadItems(tx, schoolId, quizId);
+}
+
 async function loadItems(tx: Tx, schoolId: string, quizId: string): Promise<QuizItem[]> {
   const rows = await tx
     .select({
