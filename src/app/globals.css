@@ -47,3 +47,62 @@ a {
     color-scheme: dark;
   }
 }
+
+.shell {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  display: grid;
+  gap: 16px;
+  padding: 32px 24px;
+  border: 1px solid color-mix(in srgb, var(--foreground) 18%, transparent);
+  border-radius: 12px;
+}
+
+.muted {
+  opacity: 0.7;
+}
+
+.notice {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #c0392b;
+  color: #c0392b;
+}
+
+.button {
+  width: 100%;
+  padding: 10px 16px;
+  border: 1px solid var(--foreground);
+  border-radius: 8px;
+  background: var(--foreground);
+  color: var(--background);
+  font: inherit;
+  cursor: pointer;
+}
+
+.button-secondary {
+  background: transparent;
+  color: var(--foreground);
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+
+.field input {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--foreground) 30%, transparent);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
