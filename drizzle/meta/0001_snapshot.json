@@ -1,0 +1,1828 @@
+{
+  "id": "5f2931a9-c1b3-4870-9bf0-e8089816cef9",
+  "prevId": "a4a5c712-8922-4db2-b498-91302bb0ef86",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.answers": {
+      "name": "answers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "school_id": {
+          "name": "school_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempt_id": {
+          "name": "attempt_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quiz_id": {
+          "name": "quiz_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quiz_question_id": {
+          "name": "quiz_question_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "response": {
+          "name": "response",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_correct": {
+          "name": "is_correct",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "points_awarded": {
+          "name": "points_awarded",
+          "type": "numeric(6, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "graded_by": {
+          "name": "graded_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "feedback": {
+          "name": "feedback",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "answered_at": {
+          "name": "answered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "answers_quiz_question_idx": {
+          "name": "answers_quiz_question_idx",
+          "columns": [
+            {
+              "expression": "quiz_question_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "answers_ungraded_idx": {
+          "name": "answers_ungraded_idx",
+          "columns": [
+            {
+              "expression": "attempt_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"answers\".\"is_correct\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "answers_school_id_schools_id_fk": {
+          "name": "answers_school_id_schools_id_fk",
+          "tableFrom": "answers",
+          "tableTo": "schools",
+          "columnsFrom": [
+            "school_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "answers_attempt_fk": {
+          "name": "answers_attempt_fk",
+          "tableFrom": "answers",
+          "tableTo": "attempts",
+          "columnsFrom": [
+            "attempt_id",
+            "quiz_id",
+            "school_id"
+          ],
+          "columnsTo": [
+            "id",
+            "quiz_id",
+            "school_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "answers_quiz_question_fk": {
+          "name": "answers_quiz_question_fk",
+          "tableFrom": "answers",
+          "tableTo": "quiz_questions",
+          "columnsFrom": [
+            "quiz_question_id",
+            "quiz_id",
+            "school_id"
+          ],
+          "columnsTo": [
+            "id",
+            "quiz_id",
+            "school_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "answers_graded_by_fk": {
+          "name": "answers_graded_by_fk",
+          "tableFrom": "answers",
+          "tableTo": "users",
+          "columnsFrom": [
+            "graded_by",
+            "school_id"
+          ],
+          "columnsTo": [
+            "id",
+            "school_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "answers_attempt_question_uq": {
+          "name": "answers_attempt_question_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "attempt_id",
+            "quiz_question_id"
+          ]
+        },
+        "answers_id_school_uq": {
+          "name": "answers_id_school_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "school_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "answers_points_ck": {
+          "name": "answers_points_ck",
+          "value": "\"answers\".\"points_awarded\" is null or \"answers\".\"points_awarded\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.attempts": {
+      "name": "attempts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "school_id": {
+          "name": "school_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quiz_id": {
+          "name": "quiz_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "student_id": {
+          "name": "student_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempt_no": {
+          "name": "attempt_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "status": {
+          "name": "status",
+          "type": "attempt_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'in_progress'"
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deadline_at": {
+          "name": "deadline_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "submitted_at": {
+          "name": "submitted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "score": {
+          "name": "score",
+          "type": "numeric(8, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "max_score": {
+          "name": "max_score",
+          "type": "numeric(8, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "graded_at": {
+          "name": "graded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "attempts_one_open_uq": {
+          "name": "attempts_one_open_uq",
+          "columns": [
+            {
+              "expression": "quiz_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "student_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"attempts\".\"status\" = 'in_progress'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "attempts_open_deadline_idx": {
+          "name": "attempts_open_deadline_idx",
+          "columns": [
+            {
+              "expression": "deadline_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"attempts\".\"status\" = 'in_progress'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "attempts_quiz_status_idx": {
+          "name": "attempts_quiz_status_idx",
+          "columns": [
+            {
+              "expression": "quiz_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "attempts_student_started_idx": {
+          "name": "attempts_student_started_idx",
+          "columns": [
+            {
+              "expression": "student_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "attempts_school_id_schools_id_fk": {
+          "name": "attempts_school_id_schools_id_fk",
+          "tableFrom": "attempts",
+          "tableTo": "schools",
+          "columnsFrom": [
+            "school_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "attempts_quiz_fk": {
+          "name": "attempts_quiz_fk",
+          "tableFrom": "attempts",
+          "tableTo": "quizzes",
+          "columnsFrom": [
+            "quiz_id",
+            "school_id"
+          ],
+          "columnsTo": [
+            "id",
+            "school_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "attempts_student_fk": {
+          "name": "attempts_student_fk",
+          "tableFrom": "attempts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "student_id",
+            "school_id"
+          ],
+          "columnsTo": [
+            "id",
+            "school_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "attempts_quiz_student_no_uq": {
+          "name": "attempts_quiz_student_no_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "quiz_id",
+            "student_id",
+            "attempt_no"
+          ]
+        },
+        "attempts_id_school_uq": {
+          "name": "attempts_id_school_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "school_id"
+          ]
+        },
+        "attempts_id_quiz_school_uq": {
+          "name": "attempts_id_quiz_school_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "quiz_id",
+            "school_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "attempts_attempt_no_ck": {
+          "name": "attempts_attempt_no_ck",
+          "value": "\"attempts\".\"attempt_no\" >= 1"
+        },
+        "attempts_deadline_ck": {
+          "name": "attempts_deadline_ck",
+          "value": "\"attempts\".\"deadline_at\" > \"attempts\".\"started_at\""
+        },
+        "attempts_submitted_ck": {
+          "name": "attempts_submitted_ck",
+          "value": "\"attempts\".\"submitted_at\" is null or \"attempts\".\"submitted_at\" >= \"attempts\".\"started_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.idempotency_keys": {
+      "name": "idempotency_keys",
+      "schema": "",
+      "columns": {
+        "school_id": {
+          "name": "school_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_hash": {
+          "name": "request_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "response": {
+          "name": "response",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idempotency_keys_created_idx": {
+          "name": "idempotency_keys_created_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "idempotency_keys_school_id_schools_id_fk": {
+          "name": "idempotency_keys_school_id_schools_id_fk",
+          "tableFrom": "idempotency_keys",
+          "tableTo": "schools",
+          "columnsFrom": [
+            "school_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "idempotency_keys_user_fk": {
+          "name": "idempotency_keys_user_fk",
+          "tableFrom": "idempotency_keys",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id",
+            "school_id"
+          ],
+          "columnsTo": [
+            "id",
+            "school_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "idempotency_keys_pk": {
+          "name": "idempotency_keys_pk",
+          "columns": [
+            "school_id",
+            "user_id",
+            "key"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.schools": {
+      "name": "schools",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "schools_slug_unique": {
+          "name": "schools_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "slug"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.classes": {
+      "name": "classes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "school_id": {
+          "name": "school_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "teacher_id": {
+          "name": "teacher_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "term": {
+          "name": "term",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "classes_teacher_idx": {
+          "name": "classes_teacher_idx",
+          "columns": [
+            {
+              "expression": "teacher_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "classes_school_id_schools_id_fk": {
+          "name": "classes_school_id_schools_id_fk",
+          "tableFrom": "classes",
+          "tableTo": "schools",
+          "columnsFrom": [
+            "school_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "classes_teacher_fk": {
+          "name": "classes_teacher_fk",
+          "tableFrom": "classes",
+          "tableTo": "users",
+          "columnsFrom": [
+            "teacher_id",
+            "school_id"
+          ],
+          "columnsTo": [
+            "id",
+            "school_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "classes_school_term_name_uq": {
+          "name": "classes_school_term_name_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "school_id",
+            "term",
+            "name"
+          ]
+        },
+        "classes_id_school_uq": {
+          "name": "classes_id_school_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "school_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.enrollments": {
+      "name": "enrollments",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "school_id": {
+          "name": "school_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "class_id": {
+          "name": "class_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "student_id": {
+          "name": "student_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "enrollment_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "enrolled_at": {
+          "name": "enrolled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "enrollments_student_status_idx": {
+          "name": "enrollments_student_status_idx",
+          "columns": [
+            {
+              "expression": "student_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "enrollments_school_id_schools_id_fk": {
+          "name": "enrollments_school_id_schools_id_fk",
+          "tableFrom": "enrollments",
+          "tableTo": "schools",
+          "columnsFrom": [
+            "school_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "enrollments_class_fk": {
+          "name": "enrollments_class_fk",
+          "tableFrom": "enrollments",
+          "tableTo": "classes",
+          "columnsFrom": [
+            "class_id",
+            "school_id"
+          ],
+          "columnsTo": [
+            "id",
+            "school_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "enrollments_student_fk": {
+          "name": "enrollments_student_fk",
+          "tableFrom": "enrollments",
+          "tableTo": "users",
+          "columnsFrom": [
+            "student_id",
+            "school_id"
+          ],
+          "columnsTo": [
+            "id",
+            "school_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "enrollments_class_student_uq": {
+          "name": "enrollments_class_student_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "class_id",
+            "student_id"
+          ]
+        },
+        "enrollments_id_school_uq": {
+          "name": "enrollments_id_school_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "school_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "school_id": {
+          "name": "school_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "citext",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "user_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "user_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "users_school_role_idx": {
+          "name": "users_school_role_idx",
+          "columns": [
+            {
+              "expression": "school_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "role",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "users_school_id_schools_id_fk": {
+          "name": "users_school_id_schools_id_fk",
+          "tableFrom": "users",
+          "tableTo": "schools",
+          "columnsFrom": [
+            "school_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "users_email_uq": {
+          "name": "users_email_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "email"
+          ]
+        },
+        "users_id_school_uq": {
+          "name": "users_id_school_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "school_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.question_options": {
+      "name": "question_options",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "school_id": {
+          "name": "school_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "question_version_id": {
+          "name": "question_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_correct": {
+          "name": "is_correct",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "question_options_school_id_schools_id_fk": {
+          "name": "question_options_school_id_schools_id_fk",
+          "tableFrom": "question_options",
+          "tableTo": "schools",
+          "columnsFrom": [
+            "school_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "question_options_version_fk": {
+          "name": "question_options_version_fk",
+          "tableFrom": "question_options",
+          "tableTo": "question_versions",
+          "columnsFrom": [
+            "question_version_id",
+            "school_id"
+          ],
+          "columnsTo": [
+            "id",
+            "school_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "question_options_version_position_uq": {
+          "name": "question_options_version_position_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "question_version_id",
+            "position"
+          ]
+        },
+        "question_options_id_school_uq": {
+          "name": "question_options_id_school_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "school_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "question_options_position_ck": {
+          "name": "question_options_position_ck",
+          "value": "\"question_options\".\"position\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.question_versions": {
+      "name": "question_versions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "school_id": {
+          "name": "school_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "question_id": {
+          "name": "question_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_no": {
+          "name": "version_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "question_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prompt": {
+          "name": "prompt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "default_points": {
+          "name": "default_points",
+          "type": "numeric(6, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'1'"
+        },
+        "accepted_answers": {
+          "name": "accepted_answers",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "explanation": {
+          "name": "explanation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "question_versions_question_version_uq": {
+          "name": "question_versions_question_version_uq",
+          "columns": [
+            {
+              "expression": "question_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version_no",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "question_versions_school_id_schools_id_fk": {
+          "name": "question_versions_school_id_schools_id_fk",
+          "tableFrom": "question_versions",
+          "tableTo": "schools",
+          "columnsFrom": [
+            "school_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "question_versions_question_fk": {
+          "name": "question_versions_question_fk",
+          "tableFrom": "question_versions",
+          "tableTo": "questions",
+          "columnsFrom": [
+            "question_id",
+            "school_id"
+          ],
+          "columnsTo": [
+            "id",
+            "school_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "question_versions_created_by_fk": {
+          "name": "question_versions_created_by_fk",
+          "tableFrom": "question_versions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by",
+            "school_id"
+          ],
+          "columnsTo": [
+            "id",
+            "school_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "question_versions_id_school_uq": {
+          "name": "question_versions_id_school_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "school_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "question_versions_version_no_ck": {
+          "name": "question_versions_version_no_ck",
+          "value": "\"question_versions\".\"version_no\" >= 1"
+        },
+        "question_versions_points_ck": {
+          "name": "question_versions_points_ck",
+          "value": "\"question_versions\".\"default_points\" >= 0"
+        },
+        "question_versions_accepted_answers_ck": {
+          "name": "question_versions_accepted_answers_ck",
+          "value": "\"question_versions\".\"accepted_answers\" is null or \"question_versions\".\"type\" = 'short_answer'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.questions": {
+      "name": "questions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "school_id": {
+          "name": "school_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "topic": {
+          "name": "topic",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "questions_school_topic_idx": {
+          "name": "questions_school_topic_idx",
+          "columns": [
+            {
+              "expression": "school_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "topic",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"questions\".\"archived_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "questions_school_id_schools_id_fk": {
+          "name": "questions_school_id_schools_id_fk",
+          "tableFrom": "questions",
+          "tableTo": "schools",
+          "columnsFrom": [
+            "school_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "questions_created_by_fk": {
+          "name": "questions_created_by_fk",
+          "tableFrom": "questions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by",
+            "school_id"
+          ],
+          "columnsTo": [
+            "id",
+            "school_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "questions_id_school_uq": {
+          "name": "questions_id_school_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "school_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.quiz_questions": {
+      "name": "quiz_questions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "school_id": {
+          "name": "school_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quiz_id": {
+          "name": "quiz_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "question_version_id": {
+          "name": "question_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "points": {
+          "name": "points",
+          "type": "numeric(6, 2)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "quiz_questions_version_idx": {
+          "name": "quiz_questions_version_idx",
+          "columns": [
+            {
+              "expression": "question_version_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "quiz_questions_school_id_schools_id_fk": {
+          "name": "quiz_questions_school_id_schools_id_fk",
+          "tableFrom": "quiz_questions",
+          "tableTo": "schools",
+          "columnsFrom": [
+            "school_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "quiz_questions_quiz_fk": {
+          "name": "quiz_questions_quiz_fk",
+          "tableFrom": "quiz_questions",
+          "tableTo": "quizzes",
+          "columnsFrom": [
+            "quiz_id",
+            "school_id"
+          ],
+          "columnsTo": [
+            "id",
+            "school_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "quiz_questions_version_fk": {
+          "name": "quiz_questions_version_fk",
+          "tableFrom": "quiz_questions",
+          "tableTo": "question_versions",
+          "columnsFrom": [
+            "question_version_id",
+            "school_id"
+          ],
+          "columnsTo": [
+            "id",
+            "school_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "quiz_questions_quiz_position_uq": {
+          "name": "quiz_questions_quiz_position_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "quiz_id",
+            "position"
+          ]
+        },
+        "quiz_questions_quiz_version_uq": {
+          "name": "quiz_questions_quiz_version_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "quiz_id",
+            "question_version_id"
+          ]
+        },
+        "quiz_questions_id_school_uq": {
+          "name": "quiz_questions_id_school_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "school_id"
+          ]
+        },
+        "quiz_questions_id_quiz_school_uq": {
+          "name": "quiz_questions_id_quiz_school_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "quiz_id",
+            "school_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "quiz_questions_position_ck": {
+          "name": "quiz_questions_position_ck",
+          "value": "\"quiz_questions\".\"position\" >= 1"
+        },
+        "quiz_questions_points_ck": {
+          "name": "quiz_questions_points_ck",
+          "value": "\"quiz_questions\".\"points\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.quizzes": {
+      "name": "quizzes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "school_id": {
+          "name": "school_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "class_id": {
+          "name": "class_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "quiz_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "time_limit_seconds": {
+          "name": "time_limit_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "opens_at": {
+          "name": "opens_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closes_at": {
+          "name": "closes_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "max_attempts": {
+          "name": "max_attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "shuffle_questions": {
+          "name": "shuffle_questions",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "results_visibility": {
+          "name": "results_visibility",
+          "type": "results_visibility",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'after_close'"
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "quizzes_class_status_opens_idx": {
+          "name": "quizzes_class_status_opens_idx",
+          "columns": [
+            {
+              "expression": "class_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "opens_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "quizzes_school_id_schools_id_fk": {
+          "name": "quizzes_school_id_schools_id_fk",
+          "tableFrom": "quizzes",
+          "tableTo": "schools",
+          "columnsFrom": [
+            "school_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "quizzes_class_fk": {
+          "name": "quizzes_class_fk",
+          "tableFrom": "quizzes",
+          "tableTo": "classes",
+          "columnsFrom": [
+            "class_id",
+            "school_id"
+          ],
+          "columnsTo": [
+            "id",
+            "school_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "quizzes_created_by_fk": {
+          "name": "quizzes_created_by_fk",
+          "tableFrom": "quizzes",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by",
+            "school_id"
+          ],
+          "columnsTo": [
+            "id",
+            "school_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "quizzes_id_school_uq": {
+          "name": "quizzes_id_school_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "school_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "quizzes_window_ck": {
+          "name": "quizzes_window_ck",
+          "value": "\"quizzes\".\"opens_at\" is null or \"quizzes\".\"closes_at\" is null or \"quizzes\".\"opens_at\" < \"quizzes\".\"closes_at\""
+        },
+        "quizzes_published_has_window_ck": {
+          "name": "quizzes_published_has_window_ck",
+          "value": "\"quizzes\".\"status\" = 'draft' or (\"quizzes\".\"opens_at\" is not null and \"quizzes\".\"closes_at\" is not null)"
+        },
+        "quizzes_time_limit_ck": {
+          "name": "quizzes_time_limit_ck",
+          "value": "\"quizzes\".\"time_limit_seconds\" is null or \"quizzes\".\"time_limit_seconds\" > 0"
+        },
+        "quizzes_max_attempts_ck": {
+          "name": "quizzes_max_attempts_ck",
+          "value": "\"quizzes\".\"max_attempts\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.attempt_status": {
+      "name": "attempt_status",
+      "schema": "public",
+      "values": [
+        "in_progress",
+        "submitted",
+        "expired",
+        "graded"
+      ]
+    },
+    "public.enrollment_status": {
+      "name": "enrollment_status",
+      "schema": "public",
+      "values": [
+        "active",
+        "withdrawn"
+      ]
+    },
+    "public.question_type": {
+      "name": "question_type",
+      "schema": "public",
+      "values": [
+        "single_choice",
+        "multiple_choice",
+        "true_false",
+        "short_answer"
+      ]
+    },
+    "public.quiz_status": {
+      "name": "quiz_status",
+      "schema": "public",
+      "values": [
+        "draft",
+        "published",
+        "closed"
+      ]
+    },
+    "public.results_visibility": {
+      "name": "results_visibility",
+      "schema": "public",
+      "values": [
+        "never",
+        "after_submit",
+        "after_close"
+      ]
+    },
+    "public.user_role": {
+      "name": "user_role",
+      "schema": "public",
+      "values": [
+        "student",
+        "teacher",
+        "admin"
+      ]
+    },
+    "public.user_status": {
+      "name": "user_status",
+      "schema": "public",
+      "values": [
+        "active",
+        "disabled"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
