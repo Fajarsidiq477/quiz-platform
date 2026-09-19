@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-The Next.js app, the full database layer (Drizzle schema, migrations, tests) and authentication exist. Pages: `/login`, an admin dashboard shell (`/admin` plus placeholder Classes, Students, Question bank and Quizzes pages), and a placeholder `/student` home. There is no quiz functionality and no BullMQ worker yet.
+The Next.js app, the full database layer (Drizzle schema, migrations, tests), authentication, and admin management of **Classes** and **Quizzes** (with their questions) exist. Students can register themselves at `/register` with a class join code. Still placeholders: the admin Students and Question bank pages, and the `/student` home. Not built yet: student quiz-taking (attempts, timer, submit), grading, and the BullMQ worker.
 
 ## Commands
 
@@ -86,7 +86,7 @@ The approved schema proposal covers `schools`, `users`, `classes`, `enrollments`
 
 ## Authentication
 
-Auth.js v5 (`next-auth@beta`) with the Credentials provider: email and password only, no SSO. There is no public sign-up: an admin pre-creates each user with a password (`npm run user:create`), and they sign in with it. Only `student` and `admin` can sign in (`src/auth/roles.ts`); `teacher` exists in the database but is refused for now. There is no change-password or forgot-password page yet; an admin resets with `npm run user:set-password`.
+Auth.js v5 (`next-auth@beta`) with the Credentials provider: email and password only, no SSO. Admins are created with `npm run user:create`; students either register themselves with a class join code (see "Student self-registration") or are created the same way. Only `student` and `admin` can sign in (`src/auth/roles.ts`); `teacher` exists in the database but is refused for now. There is no change-password or forgot-password page yet; an admin resets with `npm run user:set-password`.
 
 - **Sessions are stateless JWTs** (8 hours) with claims `uid`, `schoolId`, `role`. There is no Auth.js adapter or `accounts`/`sessions` table, and Auth.js never creates users.
 - **Passwords** are hashed with scrypt from `node:crypto` (`src/auth/password.ts`, parameters stored inside each hash so they can be raised later). Login checks only the shape of the input; the strength rule (8-128 chars) applies when an admin sets a password.
@@ -110,6 +110,31 @@ Auth.js v5 (`next-auth@beta`) with the Credentials provider: email and password 
 - The layout's title template does not apply to `/admin/page.tsx` (same segment), so that page sets an `absolute` title.
 - The shell is a CSS grid. On phones it stacks three areas, so the mobile media query must set three `grid-template-rows` (`auto auto 1fr`); inheriting the desktop `auto 1fr` stretches the nav strip and leaves a blank gap under the header (`tests/admin/mobile-layout.test.ts`).
 - The user menu in the header is a Suspense-wrapped server component so the shell streams without waiting on the user lookup.
+
+## Student self-registration
+
+`/register` is the only public sign-up. A student enters a **class join code**, their name, email and a password; the account is created as an active `student`, enrolled in that class, and signed in.
+
+- **The join code is the only gate.** `classes.join_code` is 8 characters from an unambiguous alphabet (`src/features/classes/join-code.ts`), unique across all schools, null = registration off for that class. Admins turn it on, replace it (the old one stops working at once) or turn it off on the class page (`setJoinCode`). Do not add another way to create accounts without its own gate.
+- **The school and role never come from the form.** The school is the class's school and the role is fixed to `student` in `registerStudent`; a test (`tests/admin/actions-are-protected.test.ts`) fails if the register code reads `role`, `schoolId` or `status` from the form.
+- **Lookup by code vs RLS:** the class is found before any school is known, via the SELECT-only `join_code_lookup` policy (migration `0006`), which exposes only the class whose code matches a transaction-local `app.join_code`. The inserts then run inside `withSchool`. Same pattern as `auth_lookup`.
+- **The register action is the one public server action** and does not call `requireUser`. It is listed in `PUBLIC_ACTION_FILES` in the guard test; adding to that list is a security decision.
+- **Known limits:** there is no rate limiting on `/register` yet (the code space of about 10^12 makes guessing impractical, but a Redis-based limiter is still worth adding), and a duplicate email is reported as "already exists", which tells someone with a valid code that the email is registered. There is no email verification.
+
+## Classes and quizzes (admin)
+
+Feature code lives in `src/features/<feature>/`: `schemas.ts` (Zod), `service.ts` (database logic), `actions.ts` (server actions). Pages are in `src/app/admin/{classes,quizzes}`, and forms in `src/components/admin/`.
+
+- **Services take a `Ctx` (`{ schoolId, userId }`) and run inside `withSchool`.** They also filter by `school_id` explicitly. They throw `ServiceError` (`src/features/errors.ts`) for anything the user can fix; the action turns it into an inline form error. Anything else is a real bug and is rethrown.
+- **Every exported server action must start with `await requireUser("admin")`** (`tests/admin/actions-are-protected.test.ts` checks the source). Actions are public POST endpoints; the proxy only covers the cookie, and the action check is what stops a valid cookie whose account was since disabled. "use server" files may only export async functions.
+- **Validate in the action, trust in the service.** Actions parse form data with the Zod schemas; `saveQuestionAction` receives the whole question as one JSON `payload` field built by the client form. Services accept already-parsed types.
+- **Redirect after `try`, never inside it:** `runAction` in `src/features/action-helpers.ts` does this. `redirect()` works by throwing.
+- **A quiz is a draft, published or closed.** Only a draft can be edited (settings, questions). Publishing needs a window, a future closing time and at least one question. Unpublish is refused once any attempt exists. Deleting a quiz with attempts, or a class with quizzes or enrolments, archives it (hidden, history kept) instead of deleting.
+- **Questions are versioned on edit.** Adding a question creates `questions` + version 1 and publishes it (the database validates the content at publish). Editing content inserts version n+1 and repoints the quiz item; the old version stays untouched. A points-only change keeps the version. Removing a question from a quiz leaves it in the question bank.
+- **Reordering goes through a temporary position** because `(quiz_id, position)` is unique and not deferrable (`moveQuestion`). Positions can have gaps after a removal.
+- **Times are handled in the browser.** The server does not know the teacher's time zone: `DateTimeField` converts a `datetime-local` value to an ISO instant before submitting, and `LocalDateTime` renders instants in the viewer's zone after hydration.
+- **Raw SQL subqueries must qualify columns** (`"classes"."id"`): Drizzle drops the table name in single-table queries, so a bare `id` inside the subquery silently means the inner table's own `id`.
+- Notices after redirects use fixed codes (`?notice=saved`, see `banner.tsx`), never free text from the URL.
 
 ## Conventions
 
