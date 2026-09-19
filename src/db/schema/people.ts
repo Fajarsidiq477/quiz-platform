@@ -38,6 +38,12 @@ export const classes = pgTable(
     teacherId: uuid("teacher_id").notNull(),
     name: text("name").notNull(),
     term: text("term").notNull(),
+    /**
+     * Lets a student register into this class (see src/features/register). 8 characters from an
+     * unambiguous alphabet, unique across all schools because the school is not known when a
+     * student types it. Null = self-registration is off for this class.
+     */
+    joinCode: text("join_code"),
     archivedAt: tstz("archived_at"),
     createdAt: createdAt(),
   },
@@ -47,6 +53,8 @@ export const classes = pgTable(
       columns: [t.teacherId, t.schoolId],
       foreignColumns: [users.id, users.schoolId],
     }).onDelete("restrict"),
+    unique("classes_join_code_uq").on(t.joinCode),
+    check("classes_join_code_ck", sql`${t.joinCode} is null or ${t.joinCode} ~ '^[A-HJ-NP-Z2-9]{8}$'`),
     unique("classes_school_term_name_uq").on(t.schoolId, t.term, t.name),
     unique("classes_id_school_uq").on(t.id, t.schoolId),
     index("classes_teacher_idx").on(t.teacherId),

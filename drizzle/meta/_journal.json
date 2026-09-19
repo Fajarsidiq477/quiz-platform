@@ -36,6 +36,20 @@
       "when": 1789819298082,
       "tag": "0004_login_lockout",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789824252740,
+      "tag": "0005_class_join_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789824253783,
+      "tag": "0006_join_code_lookup",
+      "breakpoints": true
     }
   ]
 }
