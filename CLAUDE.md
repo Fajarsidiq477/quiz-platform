@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-The Next.js app and the full database layer (Drizzle schema, migrations, tests) exist. There is no UI, no Auth.js wiring, and no BullMQ worker yet; `src/app` is still the create-next-app placeholder.
+The Next.js app, the full database layer (Drizzle schema, migrations, tests) and authentication exist. The only pages are `/login` and placeholder `/admin` and `/student` home pages. There is no quiz UI and no BullMQ worker yet.
 
 ## Commands
 
@@ -21,7 +21,12 @@ npx vitest run -t "converges on one row"        # one test by name
 npm run db:generate                  # drizzle-kit: diff src/db/schema -> new SQL migration
 npx drizzle-kit generate --custom --name=<x>    # empty hand-written migration (triggers, RLS)
 npm run db:migrate                   # apply migrations to DATABASE_URL (copy .env.example to .env)
+npm run db:dev                       # local dev database on :5433, no install needed (PGlite, data in .pglite/); keep it running next to `npm run dev`
+npm run user:create -- --school-slug kbs --school-name "KBS" --email a@kbs.sch.id --name "A" --role admin [--password "..."]
+npm run user:set-password -- --email a@kbs.sch.id [--password "..."]   # also clears a lockout
 ```
+
+Local dev needs `.env` with `DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5433/postgres` and `AUTH_SECRET`, plus `npm run db:dev` running. That dev database logs in as a superuser, so **RLS is inactive locally**; only the tests prove RLS.
 
 Tests need no database: `tests/db/helpers.ts` boots an in-process Postgres (PGlite) and applies the real `drizzle/` migrations, so triggers, partial indexes and RLS are exercised for real.
 
@@ -75,8 +80,26 @@ The approved schema proposal covers `schools`, `users`, `classes`, `enrollments`
 ### Gotchas
 
 - Drizzle splits migration files on the literal `--> statement-breakpoint` marker, even inside a SQL comment. Never write that token in a comment.
-- RLS is bypassed by superusers and (without `FORCE`) table owners. The app must connect as a non-owner, non-superuser role. Sign-in by email happens before a school is known, so the Auth.js lookup needs a separate role that bypasses RLS (not built yet). Creating a school also needs a privileged role, because the `schools` policy only exposes the current school.
+- Superusers always bypass RLS, so the app must connect as a non-owner, non-superuser role (the tables use `FORCE ROW LEVEL SECURITY`, so owners are subject to it too). Tests that prove RLS must run under `asAppRole(db, ...)` from `tests/db/helpers.ts`; a superuser test passes even when the policy is broken.
+- Looking a school up by slug is not allowed by the per-school policies, so `provisionUser` / `npm run user:create` must use `DATABASE_ADMIN_URL` (a role that bypasses RLS), never the web app's connection.
 - In tests, backdate timing with `withoutTriggers(db, ...)` (`session_replication_role = replica`, superuser only) since the guards make timing immutable.
+
+## Authentication
+
+Auth.js v5 (`next-auth@beta`) with the Credentials provider: email and password only, no SSO. There is no public sign-up: an admin pre-creates each user with a password (`npm run user:create`), and they sign in with it. Only `student` and `admin` can sign in (`src/auth/roles.ts`); `teacher` exists in the database but is refused for now. There is no change-password or forgot-password page yet; an admin resets with `npm run user:set-password`.
+
+- **Sessions are stateless JWTs** (8 hours) with claims `uid`, `schoolId`, `role`. There is no Auth.js adapter or `accounts`/`sessions` table, and Auth.js never creates users.
+- **Passwords** are hashed with scrypt from `node:crypto` (`src/auth/password.ts`, parameters stored inside each hash so they can be raised later). Login checks only the shape of the input; the strength rule (8-128 chars) applies when an admin sets a password.
+- **Sign-in check** is `authenticate()` in `src/auth/sign-in-policy.ts`. Every failure (wrong password, unknown email, disabled/archived account, teacher role) looks identical to the visitor, and a password check always runs so timing does not reveal whether an email exists. Do not add distinguishing messages to the login page.
+- **Lockout:** 5 wrong passwords in a row lock the account for 15 minutes (`users.failed_login_attempts`, `locked_until`); a locked account refuses even the right password, and a success or `user:set-password` clears it.
+- **`src/auth/config.ts`** is the DB-free part of the config (used by `src/proxy.ts`); **`src/auth/index.ts`** adds the Credentials provider and `jwt` callback that hit the database. Keep DB code out of `config.ts` and `proxy.ts`.
+- **`src/proxy.ts`** (Next 16's `middleware`) only does optimistic redirects from the cookie. Real authorisation is `requireUser(role)` / `getCurrentUser()` in `src/auth/dal.ts`, which re-checks the database on every request, so a disabled account or changed role takes effect immediately even with a valid cookie. Call these in every page, server action and route handler that needs a user.
+- **Sign-in lookup vs RLS:** the user is found by email before the school is known, via the SELECT-only `auth_lookup` policy (migration `0003`), which exposes only the row matching a transaction-local `app.auth_email`. See `src/auth/lookup.ts`. Lockout updates then run inside `withSchool`, so no extra write policy is needed. Only `lookupCredentialsByEmail` returns the hash.
+- The login form is a server action in `src/app/login/page.tsx`; a successful `signIn` redirects by throwing, so only `AuthError` may be caught there.
+- Required env: `AUTH_SECRET`, `DATABASE_URL` (see `.env.example`).
+- Type augmentation for the session, user and JWT is in `src/auth/next-auth.d.ts`; the JWT interface must be augmented via `@auth/core/jwt`, not `next-auth/jwt` (which only re-exports it).
+- Scripts in `scripts/` run through `tsx` as CommonJS, so no top-level `await`; wrap the body in an async `main()`.
+- Password hashing makes the auth tests slow (about 25s for the whole suite).
 
 ## Conventions
 
