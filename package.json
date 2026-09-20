@@ -13,7 +13,9 @@
     "test": "vitest run",
     "user:create": "tsx --env-file-if-exists=.env scripts/create-user.ts",
     "user:set-password": "tsx --env-file-if-exists=.env scripts/set-password.ts",
-    "db:dev": "tsx scripts/dev-db.ts"
+    "db:dev": "tsx scripts/dev-db.ts",
+    "start:lan": "tsx --env-file-if-exists=.env scripts/serve-lan.ts",
+    "lan:info": "tsx --env-file-if-exists=.env scripts/serve-lan.ts --info"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

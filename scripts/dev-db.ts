@@ -5,19 +5,35 @@
 //
 // Not for production, and NOT equivalent to a real deployment: the only login is a superuser, and
 // superusers bypass row-level security, so RLS is inactive here. The automated tests cover RLS.
+//
+// Optional environment (mainly for the tests): DEV_DB_PORT, DEV_DB_DIR ("memory://" keeps nothing
+// on disk), DEV_DB_MAX_CONNECTIONS, DEV_DB_PRUNE_MS.
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { citext } from "@electric-sql/pglite/contrib/citext";
 import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
+import { isClientDisconnect, pruneDeadConnections } from "./dev-db-lib";
 
-const PORT = 5433;
+const PORT = Number(process.env.DEV_DB_PORT ?? 5433);
+const MAX_CONNECTIONS = Number(process.env.DEV_DB_MAX_CONNECTIONS ?? 50);
+const PRUNE_MS = Number(process.env.DEV_DB_PRUNE_MS ?? 2000);
 const root = path.resolve(__dirname, "..");
+
+// A client that disconnects abruptly can make the socket library throw after it has already
+// cleaned up. That must not take the database down, or every page fails until it is restarted.
+function survive(error: unknown) {
+  if (isClientDisconnect(error)) return;
+  console.error(error);
+  process.exit(1);
+}
+process.on("uncaughtException", survive);
+process.on("unhandledRejection", survive);
 
 async function main() {
   const client = await PGlite.create({
-    dataDir: path.join(root, ".pglite"),
+    dataDir: process.env.DEV_DB_DIR ?? path.join(root, ".pglite"),
     extensions: { citext },
   });
   await migrate(drizzle(client), { migrationsFolder: path.join(root, "drizzle") });
@@ -26,9 +42,18 @@ async function main() {
     db: client,
     host: "127.0.0.1",
     port: PORT,
-    maxConnections: 10,
+    maxConnections: MAX_CONNECTIONS,
   });
   await server.start();
+
+  // The socket library leaks a connection slot for every client that disconnects abruptly (see
+  // dev-db-lib.ts); without this, they add up until every new connection is refused.
+  const pruner = setInterval(() => {
+    const freed = pruneDeadConnections(server);
+    if (freed > 0) console.log(`Freed ${freed} leaked connection slot${freed === 1 ? "" : "s"}.`);
+  }, PRUNE_MS);
+  pruner.unref();
+
   console.log(`Local database ready: postgres://postgres:postgres@127.0.0.1:${PORT}/postgres`);
   console.log("Press Ctrl+C to stop.");
 
@@ -36,6 +61,7 @@ async function main() {
   const stop = async () => {
     if (stopping) return;
     stopping = true;
+    clearInterval(pruner);
     await server.stop();
     await client.close(); // flushes to disk
     process.exit(0);
