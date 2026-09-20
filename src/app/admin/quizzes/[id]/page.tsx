@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/admin/empty-state";
 import { LocalDateTime } from "@/components/admin/local-datetime";
 import { PageHeader } from "@/components/admin/page-header";
 import { QuizForm } from "@/components/admin/quizzes/quiz-form";
+import { QuizRulesForm } from "@/components/admin/quizzes/quiz-rules-form";
 import { StatusBadge } from "@/components/admin/status-badge";
 import { listClasses } from "@/features/classes/service";
 import {
@@ -17,8 +18,11 @@ import {
   moveQuestionAction,
   publishQuizAction,
   removeQuestionAction,
+  reopenQuizAction,
+  reopenQuizAsDraftAction,
   unpublishQuizAction,
   updateQuizAction,
+  updateQuizRulesAction,
 } from "@/features/quizzes/actions";
 import { QUESTION_TYPE_LABELS } from "@/features/quizzes/schemas";
 import { getQuiz } from "@/features/quizzes/service";
@@ -62,11 +66,18 @@ export default async function QuizPage({ params, searchParams }: PageProps<"/adm
             ? "Only you can see a draft. Students can take it once it is published and open."
             : quiz.status === "published"
               ? attemptCount > 0
-                ? `Published. ${attemptCount} attempt${attemptCount === 1 ? "" : "s"} so far, so the quiz can no longer be edited.`
+                ? `Published. ${attemptCount} attempt${attemptCount === 1 ? "" : "s"} so far, so the questions, class and time limit are locked. You can still change the rules below.`
                 : "Published. Nobody has started it yet, so you can still unpublish it to make changes."
-              : "Closed. Students can no longer start it."}
+              : attemptCount > 0
+                ? "Closed. Students can no longer start it. You can reopen it below and their results are kept."
+                : "Closed. Students can no longer start it, and nobody attempted it, so it can be reopened as a draft."}
         </p>
         <div className={styles.rowActions}>
+          {!isDraft ? (
+            <Link href={`/admin/results/${quiz.id}`} className={styles.btn}>
+              View results
+            </Link>
+          ) : null}
           {isDraft ? (
             <ActionForm action={publishQuizAction.bind(null, quiz.id)}>
               <SubmitButton pendingLabel="Publishing…">Publish quiz</SubmitButton>
@@ -80,6 +91,13 @@ export default async function QuizPage({ params, searchParams }: PageProps<"/adm
           {quiz.status === "published" ? (
             <ActionForm action={closeQuizAction.bind(null, quiz.id)}>
               <SubmitButton variant="secondary">Close quiz</SubmitButton>
+            </ActionForm>
+          ) : null}
+          {quiz.status === "closed" && attemptCount === 0 ? (
+            <ActionForm action={reopenQuizAsDraftAction.bind(null, quiz.id)}>
+              <SubmitButton variant="secondary" pendingLabel="Reopening…">
+                Reopen as draft
+              </SubmitButton>
             </ActionForm>
           ) : null}
         </div>
@@ -148,6 +166,40 @@ export default async function QuizPage({ params, searchParams }: PageProps<"/adm
           </dl>
         )}
       </section>
+
+      {/* ------------------------------------------- reopen / change the rules */}
+      {!isDraft && attemptCount > 0 ? (
+        <section className={styles.section} aria-labelledby="quiz-rules">
+          <h2 id="quiz-rules">
+            {quiz.status === "closed" ? "Reopen this quiz" : "Change the rules"}
+          </h2>
+          <p className="muted" style={{ marginBottom: 12, maxWidth: 640 }}>
+            {quiz.status === "closed"
+              ? "Choose a new closing time and the quiz opens again. Students' results are kept. "
+              : "Changes apply to students who start from now on; attempts already started keep their own deadline. "}
+            The questions, class and time limit stay locked while any student result exists. To
+            change them, delete every student&rsquo;s result on the{" "}
+            <Link href={`/admin/results/${quiz.id}`}>results page</Link> first.
+          </p>
+          <QuizRulesForm
+            action={
+              quiz.status === "closed"
+                ? reopenQuizAction.bind(null, quiz.id)
+                : updateQuizRulesAction.bind(null, quiz.id)
+            }
+            initial={{
+              title: quiz.title,
+              description: quiz.description ?? "",
+              opensAt: quiz.opensAt?.toISOString() ?? null,
+              closesAt: quiz.closesAt?.toISOString() ?? null,
+              maxAttempts: quiz.maxAttempts,
+              shuffleQuestions: quiz.shuffleQuestions,
+              resultsVisibility: quiz.resultsVisibility,
+            }}
+            submitLabel={quiz.status === "closed" ? "Reopen quiz" : "Save rules"}
+          />
+        </section>
+      ) : null}
 
       {/* --------------------------------------------------------------- questions */}
       <section className={styles.section} aria-labelledby="quiz-questions">

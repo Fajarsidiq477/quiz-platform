@@ -13,7 +13,7 @@ import { withSchool } from "@/db/tenant";
 import type { AnyPgDb, Tx } from "@/db/types";
 import { ServiceError, type Ctx } from "../errors";
 import { sameQuestion, toVersionContent, type VersionContent } from "./content";
-import type { QuestionInput, QuestionType, QuizInput } from "./schemas";
+import type { QuestionInput, QuestionType, QuizInput, QuizRulesInput } from "./schemas";
 
 export const MAX_QUESTIONS_PER_QUIZ = 100;
 
@@ -231,20 +231,23 @@ function settingsValues(input: QuizInput) {
 // Quiz lifecycle: create, edit, publish, unpublish, close, delete
 // ---------------------------------------------------------------------------------------------
 
+/** `createQuiz` for a caller that already holds a school transaction (the Excel import). */
+export async function createQuizIn(tx: Tx, ctx: Ctx, input: QuizInput): Promise<{ id: string }> {
+  await assertClass(tx, ctx.schoolId, input.classId);
+  const [row] = await tx
+    .insert(quizzes)
+    .values({
+      schoolId: ctx.schoolId,
+      createdBy: ctx.userId,
+      status: "draft",
+      ...settingsValues(input),
+    })
+    .returning({ id: quizzes.id });
+  return row;
+}
+
 export async function createQuiz(db: AnyPgDb, ctx: Ctx, input: QuizInput): Promise<{ id: string }> {
-  return withSchool(db, ctx.schoolId, async (tx) => {
-    await assertClass(tx, ctx.schoolId, input.classId);
-    const [row] = await tx
-      .insert(quizzes)
-      .values({
-        schoolId: ctx.schoolId,
-        createdBy: ctx.userId,
-        status: "draft",
-        ...settingsValues(input),
-      })
-      .returning({ id: quizzes.id });
-    return row;
-  });
+  return withSchool(db, ctx.schoolId, (tx) => createQuizIn(tx, ctx, input));
 }
 
 export async function updateQuiz(db: AnyPgDb, ctx: Ctx, quizId: string, input: QuizInput) {
@@ -315,6 +318,82 @@ export async function closeQuiz(db: AnyPgDb, ctx: Ctx, quizId: string) {
       .update(quizzes)
       .set({ status: "closed" })
       .where(and(eq(quizzes.id, quizId), eq(quizzes.schoolId, ctx.schoolId)));
+  });
+}
+
+function rulesValues(input: QuizRulesInput) {
+  return {
+    title: input.title,
+    description: input.description,
+    opensAt: input.opensAt,
+    closesAt: input.closesAt,
+    maxAttempts: input.maxAttempts,
+    shuffleQuestions: input.shuffleQuestions,
+    resultsVisibility: input.resultsVisibility,
+  };
+}
+
+/**
+ * Changes the rules of a published or closed quiz that students have attempted: title, window,
+ * attempts allowed, shuffle and when results are shown. Attempts already made keep the deadline
+ * they were given (it is fixed when an attempt starts), and results are untouched. The class, the
+ * time limit and the questions stay as they are; the database refuses to change them while any
+ * attempt exists.
+ */
+export async function updateQuizRules(
+  db: AnyPgDb,
+  ctx: Ctx,
+  quizId: string,
+  input: QuizRulesInput,
+) {
+  assertUuid(quizId, "Quiz not found");
+  await withSchool(db, ctx.schoolId, async (tx) => {
+    const quiz = await lockQuiz(tx, ctx, quizId);
+    if (quiz.status === "draft") {
+      throw new ServiceError("A draft is edited with its settings form", "invalid_state");
+    }
+    await tx
+      .update(quizzes)
+      .set(rulesValues(input))
+      .where(and(eq(quizzes.id, quizId), eq(quizzes.schoolId, ctx.schoolId)));
+  });
+}
+
+/**
+ * Opens a closed quiz again. If nobody attempted it, it goes back to a draft and everything can be
+ * edited. If students have attempted it, their results are kept and it is published again with the
+ * new rules, which need a closing time in the future; the class, the time limit and the questions
+ * stay frozen until every result is deleted.
+ */
+export async function reopenQuiz(
+  db: AnyPgDb,
+  ctx: Ctx,
+  quizId: string,
+  rules: QuizRulesInput | null,
+): Promise<"draft" | "published"> {
+  assertUuid(quizId, "Quiz not found");
+  return withSchool(db, ctx.schoolId, async (tx) => {
+    const quiz = await lockQuiz(tx, ctx, quizId);
+    if (quiz.status !== "closed") {
+      throw new ServiceError("Only a closed quiz can be reopened", "invalid_state");
+    }
+    const where = and(eq(quizzes.id, quizId), eq(quizzes.schoolId, ctx.schoolId));
+
+    if ((await countAttempts(tx, ctx.schoolId, quizId)) === 0) {
+      await tx.update(quizzes).set({ status: "draft" }).where(where);
+      return "draft";
+    }
+    if (!rules) {
+      throw new ServiceError("Set the new opening and closing time to reopen this quiz");
+    }
+    if (rules.closesAt.getTime() <= Date.now()) {
+      throw new ServiceError("The closing time has already passed. Choose a later time.");
+    }
+    await tx
+      .update(quizzes)
+      .set({ ...rulesValues(rules), status: "published" })
+      .where(where);
+    return "published";
   });
 }
 
@@ -404,6 +483,48 @@ function contentOf(item: QuizItem): VersionContent {
   };
 }
 
+/** `addQuestion` for a caller that already holds a school transaction (the Excel import). */
+export async function addQuestionIn(
+  tx: Tx,
+  ctx: Ctx,
+  quizId: string,
+  input: QuestionInput,
+): Promise<{ id: string }> {
+  assertUuid(quizId, "Quiz not found");
+  const quiz = await lockQuiz(tx, ctx, quizId);
+  assertDraft(quiz);
+
+  const [{ count, last }] = await tx
+    .select({
+      count: sql<number>`count(*)::int`,
+      last: sql<number>`coalesce(max(${quizQuestions.position}), 0)::int`,
+    })
+    .from(quizQuestions)
+    .where(and(eq(quizQuestions.quizId, quizId), eq(quizQuestions.schoolId, ctx.schoolId)));
+  if (count >= MAX_QUESTIONS_PER_QUIZ) {
+    throw new ServiceError(`A quiz can have at most ${MAX_QUESTIONS_PER_QUIZ} questions`);
+  }
+
+  const content = toVersionContent(input);
+  const [question] = await tx
+    .insert(questions)
+    .values({ schoolId: ctx.schoolId, createdBy: ctx.userId, topic: quiz.title.slice(0, 100) })
+    .returning({ id: questions.id });
+  const versionId = await insertPublishedVersion(tx, ctx, question.id, 1, content);
+
+  const [item] = await tx
+    .insert(quizQuestions)
+    .values({
+      schoolId: ctx.schoolId,
+      quizId,
+      questionVersionId: versionId,
+      position: last + 1,
+      points: content.points,
+    })
+    .returning({ id: quizQuestions.id });
+  return item;
+}
+
 /** Creates a new question (version 1) and adds it to the end of the quiz. */
 export async function addQuestion(
   db: AnyPgDb,
@@ -412,40 +533,7 @@ export async function addQuestion(
   input: QuestionInput,
 ): Promise<{ id: string }> {
   assertUuid(quizId, "Quiz not found");
-  return withSchool(db, ctx.schoolId, async (tx) => {
-    const quiz = await lockQuiz(tx, ctx, quizId);
-    assertDraft(quiz);
-
-    const [{ count, last }] = await tx
-      .select({
-        count: sql<number>`count(*)::int`,
-        last: sql<number>`coalesce(max(${quizQuestions.position}), 0)::int`,
-      })
-      .from(quizQuestions)
-      .where(and(eq(quizQuestions.quizId, quizId), eq(quizQuestions.schoolId, ctx.schoolId)));
-    if (count >= MAX_QUESTIONS_PER_QUIZ) {
-      throw new ServiceError(`A quiz can have at most ${MAX_QUESTIONS_PER_QUIZ} questions`);
-    }
-
-    const content = toVersionContent(input);
-    const [question] = await tx
-      .insert(questions)
-      .values({ schoolId: ctx.schoolId, createdBy: ctx.userId, topic: quiz.title.slice(0, 100) })
-      .returning({ id: questions.id });
-    const versionId = await insertPublishedVersion(tx, ctx, question.id, 1, content);
-
-    const [item] = await tx
-      .insert(quizQuestions)
-      .values({
-        schoolId: ctx.schoolId,
-        quizId,
-        questionVersionId: versionId,
-        position: last + 1,
-        points: content.points,
-      })
-      .returning({ id: quizQuestions.id });
-    return item;
-  });
+  return withSchool(db, ctx.schoolId, (tx) => addQuestionIn(tx, ctx, quizId, input));
 }
 
 /**

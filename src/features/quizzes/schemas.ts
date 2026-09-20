@@ -15,16 +15,37 @@ const optionalDate = z.preprocess(
     .transform((v) => (v ? new Date(v) : null)),
 );
 
+/** A date that must be filled in: a quiz that is not a draft always has its window. */
+const requiredDate = z.preprocess(
+  blankToNull,
+  z
+    .string({ error: "Choose a date and time" })
+    .pipe(z.iso.datetime({ offset: true, error: "Enter a valid date and time" }))
+    .transform((v) => new Date(v)),
+);
+
 export const RESULTS_VISIBILITY = ["never", "after_submit", "after_close"] as const;
+
+// Shared by the full settings form (a draft) and the rules form (a quiz students have attempted).
+const titleField = z.string().trim().min(1, "Title is required").max(200, "Use at most 200 characters");
+const descriptionField = z
+  .string()
+  .trim()
+  .max(2000, "Use at most 2000 characters")
+  .transform((v) => v || null);
+const maxAttemptsField = z.coerce
+  .number({ error: "Enter a number of attempts" })
+  .int("Use a whole number")
+  .min(1, "At least 1 attempt")
+  .max(20, "At most 20 attempts");
+const resultsVisibilityField = z.enum(RESULTS_VISIBILITY, {
+  error: "Choose when results are shown",
+});
 
 export const quizInputSchema = z
   .object({
-    title: z.string().trim().min(1, "Title is required").max(200, "Use at most 200 characters"),
-    description: z
-      .string()
-      .trim()
-      .max(2000, "Use at most 2000 characters")
-      .transform((v) => v || null),
+    title: titleField,
+    description: descriptionField,
     classId: z.uuid("Choose a class"),
     /** Blank = untimed: the attempt then ends at the closing time. */
     timeLimitMinutes: z.preprocess(
@@ -38,13 +59,9 @@ export const quizInputSchema = z
     ),
     opensAt: optionalDate,
     closesAt: optionalDate,
-    maxAttempts: z.coerce
-      .number({ error: "Enter a number of attempts" })
-      .int("Use a whole number")
-      .min(1, "At least 1 attempt")
-      .max(20, "At most 20 attempts"),
+    maxAttempts: maxAttemptsField,
     shuffleQuestions: z.boolean(),
-    resultsVisibility: z.enum(RESULTS_VISIBILITY, { error: "Choose when results are shown" }),
+    resultsVisibility: resultsVisibilityField,
   })
   .refine((v) => !v.opensAt || !v.closesAt || v.opensAt < v.closesAt, {
     message: "The closing time must be after the opening time",
@@ -52,6 +69,27 @@ export const quizInputSchema = z
   });
 
 export type QuizInput = z.output<typeof quizInputSchema>;
+
+/**
+ * What can still be changed once students have attempted a quiz. The class, the time limit and the
+ * questions are not here: the database freezes them while any attempt exists.
+ */
+export const quizRulesSchema = z
+  .object({
+    title: titleField,
+    description: descriptionField,
+    opensAt: requiredDate,
+    closesAt: requiredDate,
+    maxAttempts: maxAttemptsField,
+    shuffleQuestions: z.boolean(),
+    resultsVisibility: resultsVisibilityField,
+  })
+  .refine((v) => v.opensAt < v.closesAt, {
+    message: "The closing time must be after the opening time",
+    path: ["closesAt"],
+  });
+
+export type QuizRulesInput = z.output<typeof quizRulesSchema>;
 
 // ---------------------------------------------------------------------------------------------
 // Questions

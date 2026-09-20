@@ -4,7 +4,7 @@ import { requireUser } from "@/auth/dal";
 import { getDb } from "@/db";
 import { ctxOf, runAction } from "../action-helpers";
 import { fieldErrorsFrom, formValue, type FormState } from "../form-state";
-import { questionInputSchema, quizInputSchema } from "./schemas";
+import { questionInputSchema, quizInputSchema, quizRulesSchema } from "./schemas";
 import {
   addQuestion,
   closeQuiz,
@@ -13,9 +13,11 @@ import {
   moveQuestion,
   publishQuiz,
   removeQuestion,
+  reopenQuiz,
   unpublishQuiz,
   updateQuestion,
   updateQuiz,
+  updateQuizRules,
 } from "./service";
 
 const quizPath = (id: string) => `/admin/quizzes/${id}`;
@@ -26,6 +28,18 @@ function parseQuizForm(formData: FormData) {
     description: formValue(formData, "description"),
     classId: formValue(formData, "classId"),
     timeLimitMinutes: formValue(formData, "timeLimitMinutes"),
+    opensAt: formValue(formData, "opensAt"),
+    closesAt: formValue(formData, "closesAt"),
+    maxAttempts: formValue(formData, "maxAttempts"),
+    shuffleQuestions: formData.get("shuffleQuestions") === "on",
+    resultsVisibility: formValue(formData, "resultsVisibility"),
+  });
+}
+
+function parseRulesForm(formData: FormData) {
+  return quizRulesSchema.safeParse({
+    title: formValue(formData, "title"),
+    description: formValue(formData, "description"),
     opensAt: formValue(formData, "opensAt"),
     closesAt: formValue(formData, "closesAt"),
     maxAttempts: formValue(formData, "maxAttempts"),
@@ -90,6 +104,47 @@ export async function closeQuizAction(
   return runAction(async () => {
     await closeQuiz(getDb(), ctxOf(user), id);
     return `${quizPath(id)}?notice=closed`;
+  });
+}
+
+/** Reopens a closed quiz that students have attempted: same results, new rules. */
+export async function reopenQuizAction(
+  id: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const user = await requireUser("admin");
+  const parsed = parseRulesForm(formData);
+  if (!parsed.success) return invalid(parsed.error);
+  return runAction(async () => {
+    const outcome = await reopenQuiz(getDb(), ctxOf(user), id, parsed.data);
+    return `${quizPath(id)}?notice=${outcome === "draft" ? "reopened_draft" : "reopened"}`;
+  });
+}
+
+/** Reopens a closed quiz nobody attempted, as a draft that can be edited freely. */
+export async function reopenQuizAsDraftAction(
+  id: string,
+): Promise<FormState> {
+  const user = await requireUser("admin");
+  return runAction(async () => {
+    await reopenQuiz(getDb(), ctxOf(user), id, null);
+    return `${quizPath(id)}?notice=reopened_draft`;
+  });
+}
+
+/** Changes the rules of a published or closed quiz (window, attempts, shuffle, results shown). */
+export async function updateQuizRulesAction(
+  id: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const user = await requireUser("admin");
+  const parsed = parseRulesForm(formData);
+  if (!parsed.success) return invalid(parsed.error);
+  return runAction(async () => {
+    await updateQuizRules(getDb(), ctxOf(user), id, parsed.data);
+    return `${quizPath(id)}?notice=rules_saved`;
   });
 }
 

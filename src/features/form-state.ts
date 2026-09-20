@@ -1,7 +1,14 @@
 import { z } from "zod";
 
-/** What a form action returns when it does not redirect. `null` = nothing submitted yet. */
-export type FormState = { error?: string; fieldErrors?: Record<string, string> } | null;
+/**
+ * What a form action returns when it does not redirect. `null` = nothing submitted yet. `details`
+ * is a list of specifics under the main error (the rows of an imported file that need fixing).
+ */
+export type FormState = {
+  error?: string;
+  fieldErrors?: Record<string, string>;
+  details?: string[];
+} | null;
 
 /** First message per field, from a failed Zod parse. */
 export function fieldErrorsFrom(error: z.ZodError): Record<string, string> {
