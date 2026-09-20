@@ -31,9 +31,14 @@ export default async function QuizzesPage({ searchParams }: PageProps<"/admin/qu
           {quizzes.length} {quizzes.length === 1 ? "quiz" : "quizzes"}
         </span>
         {classes.length > 0 ? (
-          <Link href="/admin/quizzes/new" className={styles.btn}>
-            New quiz
-          </Link>
+          <div className={styles.rowActions}>
+            <Link href="/admin/quizzes/import" className={`${styles.btn} ${styles.btnSecondary}`}>
+              Import from Excel
+            </Link>
+            <Link href="/admin/quizzes/new" className={styles.btn}>
+              New quiz
+            </Link>
+          </div>
         ) : null}
       </div>
 
