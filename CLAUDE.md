@@ -133,6 +133,15 @@ Pages: `/student` (quizzes by phase), `/student/quizzes/[id]` (rules, start, pas
 - **Component tests** run in jsdom: start the file with `// @vitest-environment jsdom` and name it `*.test.tsx`. Use fake timers including `performance`, and make a fake server report a *shrinking* remaining time, because every save re-syncs the countdown.
 - **In service tests never nest `asAppRole` callbacks** (do not call a helper that uses it from inside another `as(() => ...)`): the inner call's `reset role` ends the restricted role for the outer one and RLS silently stops applying. Compute inputs first.
 
+## Deploying (Neon + Vercel)
+
+`docs/DEPLOY-NEON.md` is the step-by-step guide. The rules behind it:
+
+- **The web app must connect as a limited role, never the owner.** Row-level security is skipped by superusers and by `BYPASSRLS` roles, and every role made in Neon's console/CLI/API (including the one Neon's Vercel integration puts in `DATABASE_URL`) has `BYPASSRLS`. `docs/neon-app-role.sql` creates the app role with SQL; `tests/db/app-role-grants.test.ts` runs that exact file and drives the main flows as that role, so the guide cannot drift from what the app needs.
+- **`npm run db:check`** (`scripts/check-db.ts`, logic in `check-db-lib.ts`) says whether a `DATABASE_URL` is safe for the app: not a superuser, no `BYPASSRLS`, and it sees no `users` rows until a school is selected. Read-only. Run it against the production app string before real use.
+- **Two connections.** Vercel gets only the pooled app string (`DATABASE_URL`) and `AUTH_SECRET`. The direct owner string stays on the teacher's laptop for `db:migrate` and `user:create` (`DATABASE_ADMIN_URL`). The pooled connection is PgBouncer in transaction mode; this is safe because the app only uses transaction-local settings (`set_config(..., true)`).
+- New migrations create tables owned by the migrating role; `ALTER DEFAULT PRIVILEGES` in the SQL file gives the app role its permissions on them automatically.
+
 ## Excel import (admin)
 
 `/admin/quizzes/import` (button "Import from Excel" on the quizzes list) creates a **draft quiz** from an `.xlsx` file, with a "Download example (.xlsx)" link to `/admin/quizzes/import/template` (a route handler that calls `requireUser("admin")`). Code is in `src/features/quiz-import/`: `format.ts` (sheet, headers, type names, limits: shared by the template and the reader so they cannot drift), `parse.ts` (reader), `template.ts` (the example workbook), `service.ts`, `schemas.ts`, `actions.ts`.
