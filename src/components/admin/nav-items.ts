@@ -5,6 +5,7 @@ export const ADMIN_NAV = [
   { href: "/admin/students", label: "Students" },
   { href: "/admin/questions", label: "Question bank" },
   { href: "/admin/quizzes", label: "Quizzes" },
+  { href: "/admin/results", label: "Results" },
 ] as const;
 
 export type AdminNavItem = (typeof ADMIN_NAV)[number];
