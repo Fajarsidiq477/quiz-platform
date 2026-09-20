@@ -50,6 +50,27 @@
       "when": 1789824253783,
       "tag": "0006_join_code_lookup",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789894373504,
+      "tag": "0007_fearless_madame_hydra",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789894384342,
+      "tag": "0008_away_guards_and_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789895058516,
+      "tag": "0009_attempt_away_tracked",
+      "breakpoints": true
     }
   ]
 }

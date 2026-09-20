@@ -1,10 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { formatAway, type AwayReason } from "@/features/attempts/away";
 import { isAnswered } from "@/features/student/grading";
 import type { TakingItem } from "@/features/student/service";
-import type { Answer, SaveResult, SubmitResult } from "@/features/student/types";
+import type { Answer, AwayResult, SaveResult, SubmitResult } from "@/features/student/types";
+import { AwayTracker, type AwayView } from "./away-tracker";
 import { formatCountdown, timerState } from "./format-time";
+import {
+  enterFullscreen,
+  exitFullscreen,
+  fullscreenSupported,
+  inFullscreen,
+  subscribeFullscreen,
+} from "./fullscreen";
+import { QuestionNav, type NavEntry } from "./question-nav";
 import { SaveQueue, type SaveState } from "./save-queue";
 import styles from "./student.module.css";
 import ui from "@/components/admin/admin.module.css";
@@ -21,7 +31,18 @@ type Props = {
   initialRemainingMs: number;
   save: (itemId: string, answer: Answer) => Promise<SaveResult>;
   submit: (answers: Record<string, Answer>) => Promise<SubmitResult | void>;
+  /**
+   * Cheating prevention: when given, the quiz is held behind a full screen prompt (where the
+   * browser supports it) and every time the student leaves the page is reported. The server
+   * records when; it is only told the reason.
+   */
+  integrity?: {
+    away: (reason: AwayReason) => Promise<AwayResult>;
+    back: () => Promise<AwayResult>;
+  };
 };
+
+const subscribeNothing = () => () => {};
 
 function startingAnswers(items: TakingItem[], saved: Props["initialAnswers"]) {
   const out: Record<string, Answer> = {};
@@ -48,6 +69,7 @@ export function AttemptRunner({
   initialRemainingMs,
   save,
   submit,
+  integrity,
 }: Props) {
   const [answers, setAnswers] = useState(() => startingAnswers(items, initialAnswers));
   const answersRef = useRef(answers);
@@ -61,14 +83,113 @@ export function AttemptRunner({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const submittingRef = useRef(false);
   const mountedRef = useRef(true);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const [currentId, setCurrentId] = useState<string | null>(null);
 
   // The latest callbacks, so the long-lived queue and timers never call a stale one.
   const saveRef = useRef(save);
   const submitRef = useRef(submit);
+  const integrityRef = useRef(integrity);
   useEffect(() => {
     saveRef.current = save;
     submitRef.current = submit;
+    integrityRef.current = integrity;
   });
+
+  // Full screen: not known until the browser is asked (so the server and the first render agree),
+  // and a device without it (iPhone Safari) is never held back.
+  const fullscreenSupport = useSyncExternalStore(
+    subscribeNothing,
+    () => (fullscreenSupported() ? "yes" : "no"),
+    () => "unknown",
+  );
+  const fullscreen = useSyncExternalStore(subscribeFullscreen, inFullscreen, () => false);
+  const [fullscreenRefused, setFullscreenRefused] = useState(false);
+  const [skipFullscreen, setSkipFullscreen] = useState(false);
+  const [awayView, setAwayView] = useState<AwayView>({ away: false, count: 0, totalMs: 0 });
+  const integrityOn = integrity !== undefined;
+  const gated =
+    integrityOn &&
+    !skipFullscreen &&
+    (fullscreenSupport === "unknown" || (fullscreenSupport === "yes" && !fullscreen));
+
+  // Time away from the page: tab hidden, another window in front, or (once entered) left full
+  // screen. The tracker reports it; the server stamps the time.
+  useEffect(() => {
+    if (!integrityOn) return;
+    const tracker = new AwayTracker(
+      {
+        away: (reason) => integrityRef.current!.away(reason),
+        back: () => integrityRef.current!.back(),
+      },
+      setAwayView,
+    );
+    let entered = false; // leaving full screen only counts after the student was in it
+    const read = () => {
+      const isFull = inFullscreen();
+      if (isFull) entered = true;
+      tracker.update({
+        hidden: document.hidden,
+        focused: document.hasFocus(),
+        fullscreen: isFull,
+        requireFullscreen: entered,
+      });
+    };
+    read();
+    document.addEventListener("visibilitychange", read);
+    document.addEventListener("fullscreenchange", read);
+    window.addEventListener("blur", read);
+    window.addEventListener("focus", read);
+    return () => {
+      document.removeEventListener("visibilitychange", read);
+      document.removeEventListener("fullscreenchange", read);
+      window.removeEventListener("blur", read);
+      window.removeEventListener("focus", read);
+      tracker.dispose();
+      void exitFullscreen(); // leaving the quiz screen (handed in) also leaves full screen
+    };
+  }, [integrityOn]);
+
+  // Keeps the navigator and the scroll offsets clear of the sticky bar, whatever height it wraps to.
+  useEffect(() => {
+    const bar = barRef.current;
+    const root = rootRef.current;
+    if (!bar || !root || typeof ResizeObserver === "undefined") return;
+    const measure = () =>
+      root.style.setProperty("--bar-h", `${Math.ceil(bar.getBoundingClientRect().height)}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, []);
+
+  // Marks the question being read: the one crossing the middle of the screen.
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) setCurrentId(entry.target.getAttribute("data-item"));
+        }
+      },
+      { rootMargin: "-35% 0px -60% 0px" },
+    );
+    for (const item of items) {
+      const el = document.getElementById(`q-${item.id}`);
+      if (el) observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, [items]);
+
+  function goToQuestion(itemId: string) {
+    const el = document.getElementById(`q-${itemId}`);
+    if (!el) return;
+    setCurrentId(itemId);
+    el.focus({ preventScroll: true }); // for keyboard and screen reader users; the scroll is below
+    const calm = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView?.({ behavior: calm ? "auto" : "smooth", block: "start" });
+  }
 
   useEffect(() => {
     mountedRef.current = true;
@@ -165,15 +286,31 @@ export function AttemptRunner({
   const announcement =
     tState === "warning" ? "Less than 5 minutes left" : tState === "danger" ? "Less than 1 minute left" : tState === "over" ? "Time is up" : "";
   const locked = submitting || closedMessage !== null;
+  const navEntries: NavEntry[] = items.map((item, index) => ({
+    id: item.id,
+    number: index + 1,
+    status: !isAnswered(item, answers[item.id])
+      ? "unanswered"
+      : saveStates[item.id]?.state === "error"
+        ? "unsaved"
+        : "answered",
+  }));
 
   return (
-    <div>
-      <div className={styles.bar}>
+    <div ref={rootRef}>
+      {/* While the full screen prompt is up, the quiz cannot be read or used. */}
+      <div inert={gated}>
+      <div className={styles.bar} ref={barRef}>
         <div className={styles.barTitle}>{title}</div>
         <div className={styles.barInfo}>
           <span>
             Answered {answeredCount} of {items.length}
           </span>
+          {awayView.count > 0 ? (
+            <span className={styles.awayChip} title="Times you left the quiz page, and for how long">
+              Left the page {awayView.count}× · {formatAway(awayView.totalMs)}
+            </span>
+          ) : null}
           <span aria-live="polite">{overall}</span>
           <span
             className={`${styles.timer} ${styles[`timer_${tState}`] ?? ""}`}
@@ -188,6 +325,14 @@ export function AttemptRunner({
         </p>
       </div>
 
+      {integrityOn ? (
+        <p className={styles.awayNote}>
+          Switching tabs, opening another window or leaving full screen is recorded, with how long
+          you were away, and your teacher can see it.
+          {fullscreenSupport === "no" ? " Full screen is not available on this device." : ""}
+        </p>
+      ) : null}
+
       {description ? <p className={styles.note} style={{ marginBottom: 16 }}>{description}</p> : null}
 
       {closedMessage ? (
@@ -199,6 +344,9 @@ export function AttemptRunner({
         </p>
       ) : null}
 
+      <div className={styles.runner}>
+      <QuestionNav entries={navEntries} currentId={currentId} onGo={goToQuestion} />
+      <div>
       {items.map((item, index) => {
         const answer = answers[item.id];
         const chosen = (answer as { optionIds?: string[] } | undefined)?.optionIds ?? [];
@@ -206,7 +354,14 @@ export function AttemptRunner({
         const state = saveStates[item.id];
         const isMulti = item.type === "multiple_choice";
         return (
-          <fieldset key={item.id} className={styles.question} disabled={locked}>
+          <fieldset
+            key={item.id}
+            id={`q-${item.id}`}
+            data-item={item.id}
+            tabIndex={-1}
+            className={styles.question}
+            disabled={locked}
+          >
             <legend className={styles.legend}>
               Question {index + 1}{" "}
               <span>
@@ -311,10 +466,52 @@ export function AttemptRunner({
           </button>
         )}
       </div>
+      </div>
+      </div>
+
+      </div>
 
       {timeIsUp || submitting ? (
         <div className={styles.overlay} role="alert">
           <p>{timeIsUp ? "Time is up. Handing in your answers…" : "Handing in your answers…"}</p>
+        </div>
+      ) : null}
+
+      {gated && !timeIsUp && !submitting ? (
+        <div className={styles.gate} role="dialog" aria-modal="true" aria-labelledby="gate-title">
+          <div className={styles.gateCard}>
+            <h2 id="gate-title">
+              {fullscreenSupport === "unknown" ? "Preparing your quiz…" : "Full screen required"}
+            </h2>
+            {fullscreenSupport === "yes" ? (
+              <>
+                <p>
+                  This quiz is taken in full screen. Switching tabs, opening another window or leaving
+                  full screen is recorded, with how long you were away, and your teacher can see it.
+                </p>
+                <p className={styles.note}>
+                  Time left: <strong>{formatCountdown(remainingMs)}</strong>. The clock keeps running.
+                </p>
+                {fullscreenRefused ? (
+                  <p className={styles.alert} role="alert">
+                    Your browser did not allow full screen.
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  className={ui.btn}
+                  onClick={() => void enterFullscreen().then((ok) => setFullscreenRefused(!ok))}
+                >
+                  Enter full screen
+                </button>
+                {fullscreenRefused ? (
+                  <button type="button" className={styles.linkButton} onClick={() => setSkipFullscreen(true)}>
+                    Continue without full screen
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>

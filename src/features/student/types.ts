@@ -4,6 +4,12 @@ export type SaveResult =
   // `final` means the attempt can no longer accept answers (submitted, or time is up).
   | { ok: false; error: string; final: boolean };
 
+/** What the browser gets back after saying it left the page or came back. */
+export type AwayResult =
+  | { ok: true }
+  // `final` means the attempt is over, so the browser can stop reporting.
+  | { ok: false; final: boolean };
+
 /** What the browser gets back if a submit does not end in a redirect to the result. */
 export type SubmitResult = { ok: false; error: string };
 

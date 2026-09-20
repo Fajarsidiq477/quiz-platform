@@ -3,7 +3,12 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/auth/dal";
 import { getDb } from "@/db";
 import { ctxOf } from "@/features/action-helpers";
-import { saveAnswerAction, submitAttemptAction } from "@/features/student/actions";
+import {
+  reportAwayAction,
+  reportBackAction,
+  saveAnswerAction,
+  submitAttemptAction,
+} from "@/features/student/actions";
 import { getAttemptPage, getMyQuiz } from "@/features/student/service";
 import { AttemptRunner } from "@/components/student/attempt-runner";
 import { ResultView } from "@/components/student/result-view";
@@ -30,6 +35,10 @@ export default async function AttemptPage({ params }: PageProps<"/student/attemp
         initialRemainingMs={page.remainingMs}
         save={saveAnswerAction.bind(null, page.attemptId)}
         submit={submitAttemptAction.bind(null, page.attemptId)}
+        integrity={{
+          away: reportAwayAction.bind(null, page.attemptId),
+          back: reportBackAction.bind(null, page.attemptId),
+        }}
       />
     );
   }

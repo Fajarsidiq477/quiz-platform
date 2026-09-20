@@ -42,6 +42,9 @@ export const attempts = pgTable(
     score: numeric("score", { precision: 8, scale: 2 }),
     maxScore: numeric("max_score", { precision: 8, scale: 2 }),
     gradedAt: tstz("graded_at"),
+    // True for attempts started while time away from the quiz page was being recorded. Older
+    // attempts have no records because nothing was recorded, which is not the same as "never left".
+    awayTracked: boolean("away_tracked").notNull().default(false),
   },
   (t) => [
     foreignKey({
@@ -120,5 +123,44 @@ export const answers = pgTable(
       .on(t.attemptId)
       .where(sql`${t.isCorrect} is null`),
     check("answers_points_ck", sql`${t.pointsAwarded} is null or ${t.pointsAwarded} >= 0`),
+  ],
+);
+
+export const AWAY_REASONS = ["hidden", "blur", "fullscreen"] as const;
+export type AwayReason = (typeof AWAY_REASONS)[number];
+
+/**
+ * Every stretch of time a student spent away from the quiz page during an attempt: the tab was
+ * hidden or minimised (`hidden`), another window had focus (`blur`), or they left full screen
+ * (`fullscreen`). The browser only says "I left" and "I am back"; the database stamps both moments
+ * with its own clock (a trigger overwrites `started_at` and sets `ended_at`), so a student cannot
+ * shorten a period by sending a different time. A period that never ends (the tab was closed) has a
+ * null `ended_at`; readers cap it at the moment the attempt ended. One open period per attempt
+ * makes a repeated "I left" a no-op.
+ */
+export const attemptAwayPeriods = pgTable(
+  "attempt_away_periods",
+  {
+    id: pk(),
+    schoolId: schoolId(),
+    attemptId: uuid("attempt_id").notNull(),
+    reason: text("reason").$type<AwayReason>().notNull(),
+    startedAt: tstz("started_at").notNull().defaultNow(),
+    endedAt: tstz("ended_at"),
+  },
+  (t) => [
+    // Deleting a student's result deletes these with the attempt.
+    foreignKey({
+      name: "attempt_away_attempt_fk",
+      columns: [t.attemptId, t.schoolId],
+      foreignColumns: [attempts.id, attempts.schoolId],
+    }).onDelete("cascade"),
+    unique("attempt_away_id_school_uq").on(t.id, t.schoolId),
+    uniqueIndex("attempt_away_one_open_uq")
+      .on(t.attemptId)
+      .where(sql`${t.endedAt} is null`),
+    index("attempt_away_attempt_idx").on(t.attemptId, t.startedAt),
+    check("attempt_away_reason_ck", sql`${t.reason} in ('hidden', 'blur', 'fullscreen')`),
+    check("attempt_away_ended_ck", sql`${t.endedAt} is null or ${t.endedAt} >= ${t.startedAt}`),
   ],
 );

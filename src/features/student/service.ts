@@ -4,14 +4,18 @@ import { answers, attempts, classes, enrollments, quizzes } from "@/db/schema";
 import { withSchool } from "@/db/tenant";
 import type { AnyPgDb, Tx } from "@/db/types";
 import { ServiceError, type Ctx } from "../errors";
-import { loadQuizItems, type QuizItem } from "../quizzes/service";
+import { loadQuizItems } from "../quizzes/service";
 import type { QuestionType } from "../quizzes/schemas";
+import { finishAttempt, finishOverdueAttempts } from "../attempts/lifecycle";
+import { toReview, type ReviewItem } from "../attempts/review";
 import { parseAnswer } from "./answers";
 import { canSeeResults, gradeAnswer, seededShuffle, type StoredResponse } from "./grading";
 
 // The database refuses answer writes and submits later than this after the deadline (a trigger),
 // which leaves room for the last autosave and the automatic submit to reach the server.
 export const GRACE_MS = 5000;
+
+export type { ReviewItem };
 
 type AttemptRow = typeof attempts.$inferSelect;
 type QuizRow = typeof quizzes.$inferSelect;
@@ -22,7 +26,7 @@ const assertUuid = (v: string, message: string) => {
 };
 
 /** Time is always the database clock, never the browser's or this server's. */
-async function dbNowMs(tx: Tx): Promise<number> {
+export async function dbNowMs(tx: Tx): Promise<number> {
   const result: unknown = await tx.execute(sql`select (extract(epoch from now()) * 1000)::float8 as now_ms`);
   const rows = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { now_ms: number }[];
   return Number(rows[0].now_ms);
@@ -82,20 +86,6 @@ export type AttemptTaking = {
   answers: Record<string, { optionIds?: string[]; text?: string }>;
 };
 
-export type ReviewItem = {
-  id: string;
-  type: QuestionType;
-  prompt: string;
-  points: number;
-  pointsAwarded: number;
-  isCorrect: boolean;
-  answered: boolean;
-  explanation: string | null;
-  options: { id: string; text: string; isCorrect: boolean; selected: boolean }[];
-  yourText: string | null;
-  acceptedAnswers: string[] | null;
-};
-
 export type AttemptResult = {
   kind: "result";
   attemptId: string;
@@ -116,7 +106,8 @@ export type AttemptResult = {
 // Attempts: loading, finishing, grading
 // ---------------------------------------------------------------------------------------------
 
-async function loadOwnAttempt(tx: Tx, ctx: Ctx, attemptId: string, lock = false) {
+/** The student's own attempt (never someone else's), with the time left by the database clock. */
+export async function loadOwnAttempt(tx: Tx, ctx: Ctx, attemptId: string, lock = false) {
   const query = tx
     .select({ attempt: attempts, remainingMs: remainingMsSql, nowMs: nowMsSql })
     .from(attempts)
@@ -142,82 +133,6 @@ async function loadQuizOf(tx: Tx, ctx: Ctx, quizId: string): Promise<QuizRow> {
     .limit(1);
   if (!quiz) throw new ServiceError("Quiz not found", "not_found");
   return quiz;
-}
-
-/**
- * Grades a finished attempt and marks it graded. Runs exactly once per attempt, inside the same
- * transaction that moved it out of in_progress, so a replayed submit cannot score it twice.
- */
-async function gradeAttempt(tx: Tx, ctx: Ctx, attempt: Pick<AttemptRow, "id" | "quizId">) {
-  const items = await loadQuizItems(tx, ctx.schoolId, attempt.quizId);
-  const saved = await tx
-    .select({ id: answers.id, itemId: answers.quizQuestionId, response: answers.response })
-    .from(answers)
-    .where(and(eq(answers.attemptId, attempt.id), eq(answers.schoolId, ctx.schoolId)));
-
-  let total = 0;
-  for (const item of items) {
-    const answer = saved.find((s) => s.itemId === item.id);
-    const grade = gradeAnswer(item, answer?.response as StoredResponse);
-    total += grade.pointsAwarded;
-    if (answer) {
-      await tx
-        .update(answers)
-        .set({ isCorrect: grade.isCorrect, pointsAwarded: grade.pointsAwarded.toFixed(2) })
-        .where(and(eq(answers.id, answer.id), eq(answers.schoolId, ctx.schoolId)));
-    }
-  }
-  await tx
-    .update(attempts)
-    .set({ status: "graded", score: total.toFixed(2) })
-    .where(and(eq(attempts.id, attempt.id), eq(attempts.schoolId, ctx.schoolId)));
-}
-
-/**
- * Ends an in-progress attempt: `submitted` if it is still inside the deadline plus grace, otherwise
- * `expired`, then grades it. The single guarded UPDATE is what makes this idempotent: a repeat
- * (double click, retry, or the timer and the button racing) matches no row and does nothing.
- * Returns whether this call was the one that ended it.
- */
-async function finishAttempt(tx: Tx, ctx: Ctx, attempt: Pick<AttemptRow, "id" | "quizId">) {
-  const moved = await tx
-    .update(attempts)
-    .set({
-      status: sql`(case when now() <= ${attempts.deadlineAt} + interval '5 seconds'
-                        then 'submitted' else 'expired' end)::attempt_status`,
-    })
-    .where(
-      and(
-        eq(attempts.id, attempt.id),
-        eq(attempts.studentId, ctx.userId),
-        eq(attempts.schoolId, ctx.schoolId),
-        eq(attempts.status, "in_progress"),
-      ),
-    )
-    .returning({ id: attempts.id });
-  if (moved.length === 0) return false;
-  await gradeAttempt(tx, ctx, attempt);
-  return true;
-}
-
-/**
- * Ends this student's attempts whose time ran out long ago. There is no background worker yet, so
- * this runs whenever the student loads a page; without it an abandoned attempt would stay open and
- * block a new one. The 5 second grace is left alone so an in-flight final save is not cut off.
- */
-async function finishOverdueAttempts(tx: Tx, ctx: Ctx) {
-  const overdue = await tx
-    .select({ id: attempts.id, quizId: attempts.quizId })
-    .from(attempts)
-    .where(
-      and(
-        eq(attempts.studentId, ctx.userId),
-        eq(attempts.schoolId, ctx.schoolId),
-        eq(attempts.status, "in_progress"),
-        sql`${attempts.deadlineAt} + interval '5 seconds' < now()`,
-      ),
-    );
-  for (const attempt of overdue) await finishAttempt(tx, ctx, attempt);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -349,7 +264,7 @@ async function loadStudentQuizzes(tx: Tx, ctx: Ctx, onlyQuizId?: string): Promis
 
 export async function listMyQuizzes(db: AnyPgDb, ctx: Ctx): Promise<StudentQuiz[]> {
   return withSchool(db, ctx.schoolId, async (tx) => {
-    await finishOverdueAttempts(tx, ctx);
+    await finishOverdueAttempts(tx, ctx.schoolId, { studentId: ctx.userId });
     return loadStudentQuizzes(tx, ctx);
   });
 }
@@ -375,7 +290,7 @@ export async function getMyQuiz(
 ): Promise<StudentQuizDetail | null> {
   if (!isUuid(quizId)) return null;
   return withSchool(db, ctx.schoolId, async (tx) => {
-    await finishOverdueAttempts(tx, ctx);
+    await finishOverdueAttempts(tx, ctx.schoolId, { studentId: ctx.userId });
     const [quiz] = await loadStudentQuizzes(tx, ctx, quizId);
     if (!quiz) return null;
 
@@ -431,7 +346,7 @@ export async function startAttempt(
   assertUuid(quizId, "Quiz not found");
   return withSchool(db, ctx.schoolId, async (tx) => {
     // An abandoned attempt must be ended first, or it would block starting a new one.
-    await finishOverdueAttempts(tx, ctx);
+    await finishOverdueAttempts(tx, ctx.schoolId, { studentId: ctx.userId });
 
     const [quiz] = await loadStudentQuizzes(tx, ctx, quizId);
     if (!quiz) {
@@ -470,7 +385,13 @@ export async function startAttempt(
     // startedAt / deadlineAt are overwritten by a database trigger; nothing here sets a time.
     const inserted = await tx
       .insert(attempts)
-      .values({ schoolId: ctx.schoolId, quizId, studentId: ctx.userId, attemptNo: next })
+      .values({
+        schoolId: ctx.schoolId,
+        quizId,
+        studentId: ctx.userId,
+        attemptNo: next,
+        awayTracked: true, // this attempt records time away from the quiz page
+      })
       .onConflictDoNothing()
       .returning({ id: attempts.id });
     if (inserted.length > 0) return { attemptId: inserted[0].id, created: true };
@@ -508,31 +429,6 @@ async function loadSavedAnswers(tx: Tx, ctx: Ctx, attemptId: string) {
   >;
 }
 
-function toReview(item: QuizItem, response: StoredResponse, graded: { isCorrect: boolean; pointsAwarded: number }): ReviewItem {
-  const selected = new Set(response?.optionIds ?? []);
-  const text = response?.text?.trim() ?? "";
-  const answered =
-    item.type === "short_answer" ? text !== "" : selected.size > 0;
-  return {
-    id: item.id,
-    type: item.type,
-    prompt: item.prompt,
-    points: Number(item.points),
-    pointsAwarded: graded.pointsAwarded,
-    isCorrect: graded.isCorrect,
-    answered,
-    explanation: item.explanation,
-    options: item.options.map((o) => ({
-      id: o.id,
-      text: o.text,
-      isCorrect: o.isCorrect,
-      selected: selected.has(o.id),
-    })),
-    yourText: item.type === "short_answer" ? (text || null) : null,
-    acceptedAnswers: item.acceptedAnswers,
-  };
-}
-
 /**
  * What the attempt page shows: the questions to answer while time remains, otherwise the result.
  * An attempt whose time ran out is ended here first, so the student never lands on a dead form.
@@ -544,7 +440,7 @@ export async function getAttemptPage(
 ): Promise<AttemptTaking | AttemptResult | null> {
   if (!isUuid(attemptId)) return null;
   return withSchool(db, ctx.schoolId, async (tx) => {
-    await finishOverdueAttempts(tx, ctx);
+    await finishOverdueAttempts(tx, ctx.schoolId, { studentId: ctx.userId });
 
     let row;
     try {
@@ -692,7 +588,7 @@ export async function submitAttempt(
       }
     }
 
-    await finishAttempt(tx, ctx, attempt);
+    await finishAttempt(tx, ctx.schoolId, attempt, { studentId: ctx.userId });
     return { attemptId: attempt.id };
   });
 }

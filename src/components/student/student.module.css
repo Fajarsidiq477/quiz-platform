@@ -404,3 +404,174 @@
     margin-bottom: 8px;
   }
 }
+
+/* ---- Cheating prevention: full screen gate and time-away note ---- */
+.gate {
+  position: fixed;
+  inset: 0;
+  z-index: 50; /* above the quiz bar and the time-is-up overlay */
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--background); /* opaque: the questions must not show through */
+  text-align: center;
+}
+.gateCard {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  max-width: 440px;
+}
+.gateCard h2 {
+  margin: 0;
+}
+.awayChip {
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+.awayNote {
+  margin-bottom: 12px;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+/* ---- Question navigator ---- */
+/* The quiz screen needs room for the sidebar next to the questions. */
+.main:has(.runner) {
+  max-width: 1120px;
+}
+.runner {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.navPanel {
+  position: sticky;
+  top: calc(var(--bar-h, 64px) + 16px);
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  max-height: calc(100vh - var(--bar-h, 64px) - 32px);
+  overflow-y: auto;
+}
+.navHead {
+  display: grid;
+  gap: 2px;
+}
+.navTitle {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.navSummary {
+  font-size: 0.8rem;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+.navGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.navItem {
+  position: relative;
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.navItem:hover {
+  background: var(--hover);
+}
+.navItem[data-status="answered"],
+.navKey[data-status="answered"] {
+  background: color-mix(in srgb, #2e7d32 24%, transparent);
+  border-color: color-mix(in srgb, #2e7d32 65%, transparent);
+}
+.navItem[data-status="answered"]::after {
+  content: "\2713"; /* a tick, so the status is not colour alone */
+  position: absolute;
+  top: 0;
+  right: 3px;
+  font-size: 0.6rem;
+}
+.navItem[data-status="unsaved"] {
+  border-color: #c0392b;
+  border-style: dashed;
+}
+.navItem[aria-current="true"] {
+  outline: 2px solid var(--foreground);
+  outline-offset: 1px;
+}
+.navLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+.navKey {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+/* Room above a question when it is scrolled to: the sticky bar (and, on phones, the strip). */
+.question {
+  scroll-margin-top: calc(var(--bar-h, 64px) + 64px);
+}
+
+@media (max-width: 899px) {
+  .runner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  /* A single row that scrolls sideways and stays pinned under the timer. */
+  .navPanel {
+    top: var(--bar-h, 64px);
+    z-index: 15;
+    margin: 0 -16px;
+    padding: 8px 16px;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    max-height: none;
+    overflow: visible;
+    background: var(--background);
+  }
+  .navHead,
+  .navLegend {
+    display: none;
+  }
+  .navGrid {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .navGrid > li {
+    flex: 0 0 40px;
+  }
+}
+.question:focus {
+  outline: none; /* it is focused by the navigator, not by tabbing */
+}
+.question:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
+}

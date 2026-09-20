@@ -1,16 +1,9 @@
 import Link from "next/link";
 import { LocalDateTime } from "@/components/admin/local-datetime";
-import { QUESTION_TYPE_LABELS } from "@/features/quizzes/schemas";
-import type { AttemptResult, ReviewItem } from "@/features/student/service";
+import { ReviewList } from "@/components/results/review-list";
+import type { AttemptResult } from "@/features/student/service";
 import styles from "./student.module.css";
 import ui from "@/components/admin/admin.module.css";
-
-function verdict(item: ReviewItem) {
-  if (!item.answered) return { key: "blank", text: "Not answered" } as const;
-  return item.isCorrect
-    ? ({ key: "correct", text: "Correct" } as const)
-    : ({ key: "wrong", text: "Incorrect" } as const);
-}
 
 export function ResultView({ result, canRetry }: { result: AttemptResult; canRetry: boolean }) {
   const percent =
@@ -62,63 +55,7 @@ export function ResultView({ result, canRetry }: { result: AttemptResult; canRet
         ) : null}
       </div>
 
-      {result.items ? (
-        <section aria-labelledby="review">
-          <h2 id="review" style={{ fontSize: "1.05rem", marginBottom: 12 }}>
-            Review
-          </h2>
-          <ol className={styles.review}>
-            {result.items.map((item, index) => {
-              const v = verdict(item);
-              return (
-                <li key={item.id} className={styles.reviewItem}>
-                  <div className={styles.meta}>
-                    <strong>Question {index + 1}</strong>
-                    <span>{QUESTION_TYPE_LABELS[item.type]}</span>
-                    <span className={`${styles.verdict} ${styles[`verdict_${v.key}`]}`}>
-                      {v.text} · {item.pointsAwarded} / {item.points}
-                    </span>
-                  </div>
-                  <p className={styles.prompt}>{item.prompt}</p>
-
-                  {item.options.length > 0 ? (
-                    <ul className={styles.reviewOptions}>
-                      {item.options.map((option) => (
-                        <li
-                          key={option.id}
-                          className={
-                            option.isCorrect
-                              ? styles.reviewRight
-                              : option.selected
-                                ? styles.reviewWrongPick
-                                : undefined
-                          }
-                        >
-                          {option.selected ? "● " : "○ "}
-                          {option.text}
-                          {option.selected ? " (your answer)" : ""}
-                          {option.isCorrect ? " ✓ correct" : ""}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div className={styles.explain}>
-                      <p>
-                        Your answer: <strong>{item.yourText ?? "—"}</strong>
-                      </p>
-                      {item.acceptedAnswers ? (
-                        <p>Accepted: {item.acceptedAnswers.join(" · ")}</p>
-                      ) : null}
-                    </div>
-                  )}
-
-                  {item.explanation ? <p className={styles.explain}>Explanation: {item.explanation}</p> : null}
-                </li>
-              );
-            })}
-          </ol>
-        </section>
-      ) : null}
+      {result.items ? <ReviewList items={result.items} /> : null}
     </>
   );
 }

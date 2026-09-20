@@ -1,0 +1,1 @@
+ALTER TABLE "attempts" ADD COLUMN "away_tracked" boolean DEFAULT false NOT NULL;
